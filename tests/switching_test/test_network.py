@@ -51,7 +51,6 @@ def run_mininet():
         disable_ipv6(h)
     for h in net.switches:
         disable_ipv6(h)
-    
     net.start()
     time.sleep(1)
     do_arp_all(net)
@@ -61,4 +60,5 @@ def run_mininet():
 
 if __name__ == '__main__':
     setLogLevel('info')
+    print("ready to test.")
     run_mininet()
