@@ -17,6 +17,11 @@ class ControllerApp(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
+        self.arp_table = {
+            # "10.0.0.1": "00:00:00:00:00:01",
+            # "10.0.0.2": "00:00:00:00:00:02",
+            # "10.0.0.3": "00:00:00:00:00:03"
+        }
 
     @set_ev_cls(event.EventSwitchEnter)
     def handle_switch_add(self, ev):
@@ -68,7 +73,24 @@ class ControllerApp(app_manager.RyuApp):
         """
         # TODO:  Update network topology and flow rules
 
-
+    def handle_arp(self, datapath, eth, arp_pkt, in_port):
+        r = self.arp_table.get(arp_pkt.dst_ip)
+        if r:
+            arp_resp = packet.Packet()
+            arp_resp.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,
+                                  dst=eth.src, src=r))
+            arp_resp.add_protocol(arp.arp(opcode=arp.ARP_REPLY,
+                                  src_mac=r, src_ip=arp_pkt.dst_ip,
+                                  dst_mac=arp_pkt.src_mac,
+                                  dst_ip=arp_pkt.src_ip))
+            arp_resp.serialize()
+            parser = datapath.ofproto_parser  
+            actions = [parser.OFPActionOutput(in_port)]
+            ofproto = datapath.ofproto
+            
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofproto.OFP_NO_BUFFER,
+                                  in_port=ofproto.OFPP_CONTROLLER, actions=actions, data=arp_resp)
+            datapath.send_msg(out)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -79,6 +101,15 @@ class ControllerApp(app_manager.RyuApp):
             pkt_dhcp = pkt.get_protocols(dhcp.dhcp)
             inPort = msg.in_port
             if not pkt_dhcp:
+                if pkt.get_protocols(arp.arp):
+                    arp_pkt = pkt.get_protocol(arp.arp)
+
+                    if (arp_pkt.src_ip not in self.arp_table):
+                        self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
+
+                    self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)
+                    # print(arp_pkt.src_ip)
+                    # print(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
                 # TODO: handle other protocols like ARP 
                 pass
             else:
