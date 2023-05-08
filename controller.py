@@ -103,14 +103,13 @@ class ControllerApp(app_manager.RyuApp):
             if not pkt_dhcp:
                 if pkt.get_protocols(arp.arp):
                     arp_pkt = pkt.get_protocol(arp.arp)
-
-                    if (arp_pkt.src_ip not in self.arp_table):
+                    
+                    if (arp_pkt.src_ip == arp_pkt.dst_ip): # arping, update arp table
                         self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
-
-                    self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)
-                    # print(arp_pkt.src_ip)
-                    # print(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
-                # TODO: handle other protocols like ARP 
+                    else:
+                        self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)
+                    
+                    self.logger.info(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
                 pass
             else:
                 DHCPServer.handle_dhcp(datapath, inPort, pkt)      
