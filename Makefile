@@ -16,13 +16,13 @@ clean: warn
 	sudo mn -c
 
 # Use 'make monitor to open monitor.
-monitor: warn
+monitor: clean
 	ryu-manager --observe-links controller.py 
 
 # Use 'make test_switching' to start switching test.
-test_switching: clean
+test_switching: warn
 	sudo $(PYTHON) tests/switching_test/test_network.py
 
 # Use 'make test_dhcp' to start switching test.
-test_dhcp: clean
+test_dhcp: warn
 	sudo $(PYTHON) tests/dhcp_test/test_network.py
