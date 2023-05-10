@@ -37,10 +37,34 @@ class DHCPServer():
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
     bin_start_ip=addrconv.ipv4.text_to_bin(start_ip)
     @classmethod
-    def assemble_ack(cls, pkt, datapath, port):
+    def assemble_ack(cls, pkt, datapath):
         # TODO: Generate DHCP ACK packet here
-        pass
-        
+        req_eth = pkt.get_protocol(ethernet.ethernet)
+        req_ipv4 = pkt.get_protocol(ipv4.ipv4)
+        req_udp = pkt.get_protocol(udp.udp)
+        req = pkt.get_protocol(dhcp.dhcp)
+        req.options.option_list.remove(
+            next(opt for opt in req.options.option_list if opt.tag == 53))
+        # req.options.option_list.insert(0, dhcp.option(tag=51, value='8640'))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=53, value=binascii.a2b_hex('05')))
+        ack_pkt = packet.Packet()
+        ack_pkt.add_protocol(ethernet.ethernet(
+            ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
+        ack_pkt.add_protocol(
+            ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
+        ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
+        ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
+                                       siaddr=DHCPServer.dhcp_server,
+                                       boot_file=req.boot_file,
+                                       yiaddr=DHCPServer.start_ip,
+                                       xid=req.xid,
+                                       options=req.options))
+        print(f'assemble ack send')
+        return ack_pkt
+
+
+
 
     @classmethod
     def assemble_offer(cls, pkt, datapath):
@@ -76,7 +100,7 @@ class DHCPServer():
         offer_pkt.add_protocol(
             ipv4.ipv4(dst=disc_ipv4.dst, src=DHCPServer.dhcp_server, proto=disc_ipv4.proto))
         offer_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-        print(f"------------{disc.options}")
+        # print(f"------------{disc.options}")
         # mac_src_bytes = binascii.unhexlify(disc_eth.src.replace(':', ''))
         # options_send = dhcp.options(option_list= disc.options.option_list, options_len=disc.options.options_len,
         #                    magic_cookie=disc.options.magic_cookie)
@@ -91,7 +115,7 @@ class DHCPServer():
         ))
 
 
-        print(f'assemble offer send \n{offer_pkt}')
+        print(f'assemble offer send')
         return offer_pkt
 
 
