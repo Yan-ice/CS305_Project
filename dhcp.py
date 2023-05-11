@@ -33,7 +33,7 @@ class DHCPServer():
     dhcp_server = '192.168.1.1'
     bin_server = addrconv.ipv4.text_to_bin(dhcp_server)
     bin_dns = addrconv.ipv4.text_to_bin(dns)
-    hostname = "mininet-vm"
+    bin_hostname = bytes("mininet-vm", 'utf-8')
     bin_hardware_addr=addrconv.mac.text_to_bin(hardware_addr)
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
     # bin_start_ip=addrconv.ipv4.text_to_bin(start_ip)
@@ -62,6 +62,12 @@ class DHCPServer():
             0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
         req.options.option_list.insert(
             0, dhcp.option(tag=3, value=DHCPServer.bin_server))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=15, value=DHCPServer.bin_hostname))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=51, value=binascii.a2b_hex('00259200')))
         ack_pkt = packet.Packet()
         ack_pkt.add_protocol(ethernet.ethernet(
             ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
@@ -69,12 +75,13 @@ class DHCPServer():
             ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
         ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
         ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
-                                    #    siaddr=DHCPServer.dhcp_server,
+                                       siaddr=DHCPServer.dhcp_server,
                                        boot_file=req.boot_file,
                                        yiaddr=cur_ip,
                                        ciaddr="0.0.0.0",
                                        xid=req.xid,
-                                       options=req.options))
+                                       options=req.options,
+                                       flags=req.flags))
         print(f'assemble ack send \n content is {ack_pkt}')
         DHCPServer.ip_num+=1
         return ack_pkt
@@ -110,8 +117,12 @@ class DHCPServer():
             0, dhcp.option(tag=53, value=binascii.a2b_hex('02')))
         disc.options.option_list.insert(
             0, dhcp.option(tag=54, value=DHCPServer.bin_server))
-        # disc.options.option_list.insert(
-        # 0, dhcp.option(tag=51, value=binascii.a2b_hex('259200')))
+        disc.options.option_list.insert(
+            0, dhcp.option(tag=15, value=DHCPServer.bin_hostname))
+        disc.options.option_list.insert(
+            0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
+        disc.options.option_list.insert(
+            0, dhcp.option(tag=51, value=binascii.a2b_hex('00259200')))
 
         offer_pkt = packet.Packet()
         offer_pkt.add_protocol(ethernet.ethernet(
@@ -119,13 +130,15 @@ class DHCPServer():
         offer_pkt.add_protocol(
             ipv4.ipv4(dst=disc_ipv4.dst, src=DHCPServer.dhcp_server, proto=disc_ipv4.proto))
         offer_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
+       
         offer_pkt.add_protocol(dhcp.dhcp(op=2, 
                                          chaddr=disc_eth.src,
                                         #  siaddr=DHCPServer.dhcp_server,
                                          boot_file=disc.boot_file,
                                          yiaddr=cur_ip,
                                          xid=disc.xid,
-                                         options =disc.options
+                                         options =disc.options,
+                                         flags=disc.flags
         ))
 
 
