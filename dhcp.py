@@ -49,9 +49,19 @@ class DHCPServer():
         req = pkt.get_protocol(dhcp.dhcp)
         req.options.option_list.remove(
             next(opt for opt in req.options.option_list if opt.tag == 53))
-        req.options.option_list.insert(0, dhcp.option(tag=51, value=binascii.a2b_hex('8640')))
+        req.options.option_list.remove(
+            next(opt for opt in req.options.option_list if opt.tag == 55))
+        req.options.option_list.remove(
+            next(opt for opt in req.options.option_list if opt.tag == 12))
+        req.options.option_list.remove(
+            next(opt for opt in req.options.option_list if opt.tag == 50))
+        # req.options.option_list.insert(0, dhcp.option(tag=51, value=binascii.a2b_hex('8640')))
         req.options.option_list.insert(
             0, dhcp.option(tag=53, value=binascii.a2b_hex('05')))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
+        req.options.option_list.insert(
+            0, dhcp.option(tag=3, value=DHCPServer.bin_server))
         ack_pkt = packet.Packet()
         ack_pkt.add_protocol(ethernet.ethernet(
             ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
@@ -59,10 +69,10 @@ class DHCPServer():
             ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
         ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
         ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
-                                       siaddr=DHCPServer.dhcp_server,
+                                    #    siaddr=DHCPServer.dhcp_server,
                                        boot_file=req.boot_file,
                                        yiaddr=cur_ip,
-                                       ciaddr=cur_ip,
+                                       ciaddr="0.0.0.0",
                                        xid=req.xid,
                                        options=req.options))
         print(f'assemble ack send \n content is {ack_pkt}')
@@ -100,6 +110,8 @@ class DHCPServer():
             0, dhcp.option(tag=53, value=binascii.a2b_hex('02')))
         disc.options.option_list.insert(
             0, dhcp.option(tag=54, value=DHCPServer.bin_server))
+        # disc.options.option_list.insert(
+        # 0, dhcp.option(tag=51, value=binascii.a2b_hex('259200')))
 
         offer_pkt = packet.Packet()
         offer_pkt.add_protocol(ethernet.ethernet(
@@ -109,7 +121,7 @@ class DHCPServer():
         offer_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
         offer_pkt.add_protocol(dhcp.dhcp(op=2, 
                                          chaddr=disc_eth.src,
-                                         siaddr=DHCPServer.dhcp_server,
+                                        #  siaddr=DHCPServer.dhcp_server,
                                          boot_file=disc.boot_file,
                                          yiaddr=cur_ip,
                                          xid=disc.xid,
