@@ -12,48 +12,28 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import udp
 from dhcp import DHCPServer
 
-# router_entry: destination: (distance, next_skip)
-class SwitchDevice:
-    
+def form_id(id):
+    if id >= 200:
+        return f"h{id-200}"
+    return f"s{id-100}"
+
+class NetDevice:
     def __init__(self, owner, id):
         self.id = id
         self.owner = owner
-        self.router_table = {self: (0,self)}
         self.adjust = []
+        self.router_table = {self: (0,self)}
         
     def destroy(self):
-        self.router_table = None
         self.adjust = None
         self.owner = None
+        self.router_table = None
         
-    def print_info(self):
-        print(f"=====[s{self.id}]=====")
-        print(f"adjust info:")
-        for adj in self.adjust:
-            print(f"[s{self.id}] -> s{adj.id} == 1")
-        print(f"routing table:")
-        for route in self.router_table.keys():
-            print(f"[s{self.id}] -> s{route.id} == {self.router_table[route][0]} (nxt skip: s{self.router_table[route][1].id})")
-            
-    def is_src(self, link):
-        for port in self.owner.ports:
-            if link.src.dpid == port.dpid and link.src.port_no == port.port_no:
-                return True
-        return False
-    
-    def is_dst(self, link):
-        for port in self.owner.ports:
-            if link.dst.dpid == port.dpid and link.dst.port_no == port.port_no:
-                return True
-        return False
-    
     def add_adjust(self, other_device):
         self.adjust.append(other_device)
-        other_device.update_from_adj(self, 1)
- 
+    
     #update the table by giving an adjust device and the distance.
     def update_from_adj(self, adj_dev, adj_distance = 1):
-        print(f"updating routing table of s{self.id}")
         updated = False
         for key in adj_dev.router_table:
             if key in self.router_table.keys():
@@ -68,45 +48,112 @@ class SwitchDevice:
             for dev in self.adjust:
                 dev.update_from_adj(self,1)
             
-class ControllerApp(app_manager.RyuApp):
+# router_entry: destination: (distance, next_skip)
+class SwitchDevice(NetDevice):
     
-    #record the original danshielements in Ryu
-    #permanently saved
-    switches = []
-    links = []
+    def __init__(self, owner, id):
+        super().__init__(owner, 100+id)
+        
+    def has_port(self, port):
+        for sport in self.owner.ports:
+            if sport.dpid == port.dpid and sport.port_no == port.port_no:
+                return True
+        return False
+    
+    def is_host():
+        return False
+        
+    def print_info(self):
+        print(f"=====[Switch {form_id(self.id)}]=====")
+        #print(f"port info:")
+        #for port in self.owner.ports:
+        #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
+        print(f"adjust info:")
+        for adj in self.adjust:
+            print(f"[{form_id(self.id)}] -> {form_id(adj.id)} == 1")
+        print(f"routing table:")
+        for route in self.router_table.keys():
+            print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
+ 
+    def add_adjust(self, other_device):
+        super().add_adjust(other_device)
+        self.update_from_adj(other_device,1)
+    
+
+
+class HostDevice(NetDevice):
+    
+    def __init__(self, owner, id):
+        super().__init__(owner, 200+id)
+        
+    def is_host():
+        return True
+    
+    def has_port(self, port):
+        for sport in [self.owner.port]:
+            if sport.dpid == port.dpid and sport.port_no == port.port_no:
+                return True
+        return False
+    
+    def print_info(self):
+        print(f"=====[Host {form_id(self.id)}]=====")
+        #print(f"port info:")
+        #for port in [self.owner.port]:
+        #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
+        print(f"link info:")
+        for adj in self.adjust:
+            print(f"[{form_id(self.id)}] -> {form_id(adj.id)}")
+ 
+
+class ControllerApp(app_manager.RyuApp):
     
     #totaly update when topology changes
     switch_dev = []
+    host_dev = []
     
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
+    
+    def print_debug_message(self):
+        for dev in self.switch_dev:
+            dev.print_info()
+        for dev in self.host_dev:
+            dev.print_info()
+            
     def topology_update(self):
         
         # clean the old topology
         for dev in self.switch_dev:
             dev.destroy()
         self.switch_dev.clear()
-        print("rebuilding topology")
+        for dev in self.host_dev:
+            dev.destroy()
+        self.host_dev.clear()
         
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
             nd = SwitchDevice(switch,id)
             self.switch_dev.append(nd)
         
+                # translate hosts to net point
+        for id,host in enumerate(self.send_request(event.EventHostRequest(None)).hosts):
+            nd = HostDevice(host,id)
+            self.host_dev.append(nd)
+            for sw_dev in self.switch_dev:
+                if sw_dev.has_port(host.port):
+                    nd.add_adjust(sw_dev)
+                    sw_dev.add_adjust(nd)
+            
+            
         # translate link to edge in map
         for link in self.send_request(event.EventLinkRequest(None)).links:
+            # print(f"link info: {link.src.dpid},{link.src.port_no}({link.src.hw_addr}) <-> {link.dst.dpid},{link.dst.port_no}({link.dst.hw_addr})")
             src,dst = None,None
             for dev in self.switch_dev:
-                if dev.is_src(link):
+                if dev.has_port(link.src):
                     src = dev
-                if dev.is_dst(link):
+                if dev.has_port(link.dst):
                     dst = dev
             src.add_adjust(dst)
-        
-        
-        #print debug message
-        for dev in self.switch_dev:
-            dev.print_info()
-        
     
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
@@ -117,55 +164,34 @@ class ControllerApp(app_manager.RyuApp):
         }
 
     @set_ev_cls(event.EventSwitchEnter)
-    def handle_switch_add(self, ev):
-        
-        print("new switches added: ",ev)
-        """
-        Event handler indicating a switch has come online.
-        """
+    def handle_switch_add(self, ev): 
+        print("new switches added.")
+        self.topology_update()
         
     @set_ev_cls(event.EventSwitchLeave)
     def handle_switch_delete(self, ev):
-        print("switches deleted: ",ev)
-        """
-        Event handler indicating a switch has been removed
-        """
-
+        print("switches deleted.")
+        self.topology_update()
+        
     @set_ev_cls(event.EventHostAdd)
     def handle_host_add(self, ev):
-        print("new host added: ",ev)
-        """
-        Event handler indiciating a host has joined the network
-        This handler is automatically triggered when a host sends an ARP response.
-        """ 
-        # TODO:  Update network topology and flow rules
-        
+        print("new host added.")
+        self.topology_update()
         
     @set_ev_cls(event.EventLinkAdd)
     def handle_link_add(self, ev):
-        print("new link added: ",ev)
-        """
-        Event handler indicating a link between two switches has been added
-        """
-        # TODO:  Update network topology and flow rules
+        print("new link added.")
+        self.topology_update()
         
     @set_ev_cls(event.EventLinkDelete)
     def handle_link_delete(self, ev):
-        print("link deleted: ",ev)
-        """
-        Event handler indicating when a link between two switches has been deleted
-        """
-        # TODO:  Update network topology and flow rules
-        
+        print("link deleted.")
+        self.topology_update()
 
     @set_ev_cls(event.EventPortModify)
     def handle_port_modify(self, ev):
-        """
-        Event handler for when any switch port changes state.
-        This includes links for hosts as well as links between switches.
-        """
-        # TODO:  Update network topology and flow rules
-
+        print("port modified.")
+        self.topology_update()
 
     def handle_arp(self, datapath, eth, arp_pkt, in_port):
         r = self.arp_table.get(arp_pkt.dst_ip)
@@ -192,23 +218,23 @@ class ControllerApp(app_manager.RyuApp):
             msg = ev.msg
             datapath = msg.datapath
             pkt = packet.Packet(data=msg.data)
-            pkt_dhcp = pkt.get_protocols(dhcp.dhcp)
             inPort = msg.in_port
-            if not pkt_dhcp:
-                if pkt.get_protocols(arp.arp):
-                    arp_pkt = pkt.get_protocol(arp.arp)
+            
+            if pkt.get_protocols(dhcp.dhcp):
+                DHCPServer.handle_dhcp(datapath, inPort, pkt)  
+                
+            elif pkt.get_protocols(arp.arp):
+                # self.print_debug_message()
+                arp_pkt = pkt.get_protocol(arp.arp)
+                print(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
+                if (arp_pkt.src_ip == arp_pkt.dst_ip): # arping, update arp table
+                    self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
+                else:
+                    self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
-                    if (arp_pkt.src_ip == arp_pkt.dst_ip): # arping, update arp table
-                        self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
-                    else:
-                        self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)
-                    
-                    self.topology_update()
-                    self.logger.info(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
-                pass
             else:
-                DHCPServer.handle_dhcp(datapath, inPort, pkt)      
-            return 
+                print("unsupported packet protocols. (ignored)")
+                
         except Exception as e:
             self.logger.error(e)
     
