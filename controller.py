@@ -13,12 +13,12 @@ from ryu.lib.packet import udp
 from dhcp import DHCPServer
 
 # router_entry: destination: (distance, next_skip)
-class NetDevice:
+class SwitchDevice:
     
     def __init__(self, owner, id):
         self.id = id
         self.owner = owner
-        self.router_table = {owner: (0,None)}
+        self.router_table = {self: (0,self)}
         self.adjust = []
         
     def destroy(self):
@@ -32,7 +32,7 @@ class NetDevice:
         for adj in self.adjust:
             print(f"[s{self.id}] -> s{adj.id} == 1")
         print(f"routing table:")
-        for route in self.router_table.keys:
+        for route in self.router_table.keys():
             print(f"[s{self.id}] -> s{route.id} == {self.router_table[route][0]} (nxt skip: s{self.router_table[route][1].id})")
             
     def is_src(self, link):
@@ -49,63 +49,62 @@ class NetDevice:
     
     def add_adjust(self, other_device):
         self.adjust.append(other_device)
-
-    def update_adjust(self):
-        for adj in self.adjust:
-            adj.update_from_adj(self, 1)
-    
+        other_device.update_from_adj(self, 1)
+ 
     #update the table by giving an adjust device and the distance.
     def update_from_adj(self, adj_dev, adj_distance = 1):
+        print(f"updating routing table of s{self.id}")
         updated = False
         for key in adj_dev.router_table:
-            if key in self.router_table.keys:
-                if self.router_table[key][0] > adj_distance[key][0]+adj_distance:
-                    self.router_table[key] = (adj_distance[key][0]+adj_distance, adj_dev)
+            if key in self.router_table.keys():
+                if self.router_table[key][0] > adj_dev.router_table[key][0]+adj_distance:
+                    self.router_table[key] = (adj_dev.router_table[key][0]+adj_distance, adj_dev)
                     updated = True
             else: 
-                self.router_table[key] = (adj_distance[key][0]+adj_distance, adj_dev)
+                self.router_table[key] = (adj_dev.router_table[key][0]+adj_distance, adj_dev)
                 updated = True
                 
         if updated:
-            self.update_adjust()
+            for dev in self.adjust:
+                dev.update_from_adj(self,1)
             
 class ControllerApp(app_manager.RyuApp):
     
     #record the original danshielements in Ryu
     #permanently saved
-    switch_devices = []
+    switches = []
     links = []
     
     #totaly update when topology changes
-    network_point = []
-    topology = []
+    switch_dev = []
     
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
     def topology_update(self):
         
         # clean the old topology
-        for dev in self.network_point:
+        for dev in self.switch_dev:
             dev.destroy()
-        self.network_point.clear()
+        self.switch_dev.clear()
         print("rebuilding topology")
         
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
-            nd = NetDevice(switch,id)
-            self.network_point.append(nd)
+            nd = SwitchDevice(switch,id)
+            self.switch_dev.append(nd)
         
         # translate link to edge in map
         for link in self.send_request(event.EventLinkRequest(None)).links:
             src,dst = None,None
-            for dev in self.network_point:
+            for dev in self.switch_dev:
                 if dev.is_src(link):
                     src = dev
                 if dev.is_dst(link):
                     dst = dev
             src.add_adjust(dst)
         
+        
         #print debug message
-        for dev in self.network_point:
+        for dev in self.switch_dev:
             dev.print_info()
         
     
