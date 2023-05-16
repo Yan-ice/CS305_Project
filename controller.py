@@ -29,27 +29,41 @@ class NetDevice:
             if adj_device is dev:
                 return port
         
-        if adj_device is None:
-            print("WARN: adjust dev is None!")
-        else:
-            print(f"WARN: cannot find port of this adj_dev: {adj_device.id}!")
-            print(f"adj size: {len(self.adjust)}")
-            for adj in self.adjust:
-                print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)} == 1")
-            
+        print(f"WARN: cannot find port of this adj_dev: {adj_device.id}!")
+        print(f"adj size: {len(self.adjust)}")
+        self.print_info()
+                
+    def print_info(self):
+        print(f"=====[Device {form_id(self.id)}]=====")
+        print(f"adjust info:")
+        for adj in self.adjust:
+            print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)} == 1")
+        print(f"routing table:")
+        for route in self.router_table.keys():
+            print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
+        
+        
     def destroy(self):
         self.adjust = None
         self.owner = None
         self.router_table = None
-        
+    
+    def is_adjust(self, other_device):
+        for adj_dev, d in self.adjust:
+            if other_device is adj_dev:
+                return True
+        return False
+    
     def add_adjust(self, other_device, port):
-        if other_device is None:
-            print("WARN: add a NONE value as adjust device!")
-            return
         self.adjust.append((other_device,port))
+        self.update_from_adj(other_device,1)
         
     #update the table by giving an adjust device and the distance.
     def update_from_adj(self, adj_dev, adj_distance = 1):
+        
+        if not self.is_adjust(adj_dev):
+            return
+
         updated = False
         for key in adj_dev.router_table:
             if key in self.router_table.keys():
@@ -134,23 +148,6 @@ class SwitchDevice(NetDevice):
                 print(f"Flow commit for {form_id(self.id)}: {dst_addr}({form_id(dst.id)}) -> port{next_skip_port}({form_id(next_skip.id)})")
         pass
     
-    def print_info(self):
-        print(f"=====[Switch {form_id(self.id)}]=====")
-        #print(f"port info:")
-        #for port in self.owner.ports:
-        #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
-        print(f"adjust info:")
-        for adj in self.adjust:
-            print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)} == 1")
-        print(f"routing table:")
-        for route in self.router_table.keys():
-            print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
-        
-    def add_adjust(self, other_device, port):
-        super().add_adjust(other_device, port)
-        self.update_from_adj(other_device,1)
-    
-
 
 class HostDevice(NetDevice):
     
@@ -167,15 +164,6 @@ class HostDevice(NetDevice):
             if sport.dpid == port.dpid and sport.port_no == port.port_no:
                 return True
         return False
-    
-    def print_info(self):
-        print(f"=====[Host {form_id(self.id)}]=====")
-        #print(f"port info:")
-        #for port in [self.owner.port]:
-        #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
-        print(f"link info:")
-        for adj in self.adjust:
-            print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)}")
  
 
 class ControllerApp(app_manager.RyuApp):
@@ -203,7 +191,7 @@ class ControllerApp(app_manager.RyuApp):
             dev.destroy()
         self.host_dev.clear()
         
-        print(f"updating topology. ({len(self.switch_dev)}) ({len(self.host_dev)})")
+        print(f"updating topology.")
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
             nd = SwitchDevice(switch,id+1)
@@ -215,8 +203,9 @@ class ControllerApp(app_manager.RyuApp):
             self.host_dev.append(nd)
             for sw_dev in self.switch_dev:
                 if sw_dev.has_port(host.port):
-                    nd.add_adjust(sw_dev,host.port)
                     sw_dev.add_adjust(nd,host.port)
+                    nd.add_adjust(sw_dev,host.port)
+                    
             
             
         # translate link to edge in map
@@ -237,6 +226,9 @@ class ControllerApp(app_manager.RyuApp):
             
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
+        self.switch_dev = []
+        self.host_dev = []
+        
         self.arp_table = {
             # "10.0.0.1": "00:00:00:00:00:01",
             # "10.0.0.2": "00:00:00:00:00:02",
@@ -257,6 +249,7 @@ class ControllerApp(app_manager.RyuApp):
     def handle_host_add(self, ev):
         print("new host added.")
         self.topology_update()
+        # self.print_debug_message()
         
     @set_ev_cls(event.EventLinkAdd)
     def handle_link_add(self, ev):
@@ -317,10 +310,7 @@ class ControllerApp(app_manager.RyuApp):
             else:
                 if pkt.get_protocols(ethernet.ethernet):
                     eth_pkt = pkt.get_protocol(ethernet.ethernet)
-                    print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
-                    if pkt.get_protocols(ipv4.ipv4):
-                        ip_pkt = pkt.get_protocol(ipv4.ipv4)
-                        print(f"({ip_pkt.src}->{ip_pkt.dst})")
+                    # print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
                 
         except Exception as e:
             self.logger.error(e)
