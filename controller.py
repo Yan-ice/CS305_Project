@@ -22,16 +22,21 @@ class NetDevice:
         self.id = id
         self.owner = owner
         self.adjust = []
-        self.router_table = {self: (0,self)}
-        
+        self.router_table = {self: (0, self)}
+    
+    def get_port(self,adj_device):
+        for dev,port in self.adjust:
+            if adj_device == dev:
+                return port
+            
     def destroy(self):
         self.adjust = None
         self.owner = None
         self.router_table = None
         
-    def add_adjust(self, other_device):
-        self.adjust.append(other_device)
-    
+    def add_adjust(self, other_device, port):
+        self.adjust.append((other_device,port))
+        
     #update the table by giving an adjust device and the distance.
     def update_from_adj(self, adj_dev, adj_distance = 1):
         updated = False
@@ -46,7 +51,7 @@ class NetDevice:
                 
         if updated:
             for dev in self.adjust:
-                dev.update_from_adj(self,1)
+                dev[0].update_from_adj(self,1)
             
 # router_entry: destination: (distance, next_skip)
 class SwitchDevice(NetDevice):
@@ -60,9 +65,47 @@ class SwitchDevice(NetDevice):
                 return True
         return False
     
-    def is_host():
+    def is_host(self):
         return False
+    
         
+    def commit(self):
+        datapath = self.owner.dp
+        ofp = datapath.ofproto
+        ofp_parser = datapath.ofproto_parser
+        
+        # boardcast setting
+        if True:
+            actions = [ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
+            for port in range(len(self.adjust)):
+                actions.append(ofp_parser.OFPActionOutput(port))
+            
+
+            match = ofp_parser.OFPMatch(dl_dst = 'ff:ff:ff:ff:ff:ff')
+            req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
+                                            priority=9999, flags=0, match=match, out_port = 0, actions=actions)
+            datapath.send_msg(req)
+            
+            match = ofp_parser.OFPMatch(dl_dst = '00:00:00:00:00:00')
+            req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
+                                            priority=9999, flags=0, match=match, out_port = 0, actions=actions)
+            datapath.send_msg(req)
+        
+        # flow setting
+        for dst in self.router_table.keys():
+            if dst.is_host():
+                next_skip = self.router_table[dst][1]
+                next_skip_port = self.get_port(next_skip).port_no # port of next skip
+                dst_addr = dst.ip_addr # target host
+                actions = [ofp_parser.OFPActionOutput(next_skip_port)]
+                match = ofp_parser.OFPMatch(nw_dst = dst_addr)
+                
+                req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
+                                            priority=2333, flags=0, match=match, out_port = next_skip_port, actions=actions)
+                datapath.send_msg(req)
+                print(f"Flow commit for {form_id(self.id)}: {dst_addr}({form_id(dst.id)}) -> port{next_skip_port}({form_id(next_skip.id)})")
+        pass
+    
     def print_info(self):
         print(f"=====[Switch {form_id(self.id)}]=====")
         #print(f"port info:")
@@ -70,23 +113,25 @@ class SwitchDevice(NetDevice):
         #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
         print(f"adjust info:")
         for adj in self.adjust:
-            print(f"[{form_id(self.id)}] -> {form_id(adj.id)} == 1")
+            print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)} == 1")
         print(f"routing table:")
         for route in self.router_table.keys():
             print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
- 
-    def add_adjust(self, other_device):
-        super().add_adjust(other_device)
+        
+    def add_adjust(self, other_device, port):
+        super().add_adjust(other_device, port)
         self.update_from_adj(other_device,1)
     
 
 
 class HostDevice(NetDevice):
     
+    
     def __init__(self, owner, id):
         super().__init__(owner, 200+id)
+        self.ip_addr = f'10.0.0.{id}'
         
-    def is_host():
+    def is_host(self):
         return True
     
     def has_port(self, port):
@@ -102,7 +147,7 @@ class HostDevice(NetDevice):
         #    print(f"{port.dpid}:{port.port_no}({port.hw_addr})")
         print(f"link info:")
         for adj in self.adjust:
-            print(f"[{form_id(self.id)}] -> {form_id(adj.id)}")
+            print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)}")
  
 
 class ControllerApp(app_manager.RyuApp):
@@ -136,12 +181,12 @@ class ControllerApp(app_manager.RyuApp):
         
                 # translate hosts to net point
         for id,host in enumerate(self.send_request(event.EventHostRequest(None)).hosts):
-            nd = HostDevice(host,id)
+            nd = HostDevice(host,id+1)
             self.host_dev.append(nd)
             for sw_dev in self.switch_dev:
                 if sw_dev.has_port(host.port):
-                    nd.add_adjust(sw_dev)
-                    sw_dev.add_adjust(nd)
+                    nd.add_adjust(sw_dev,host.port)
+                    sw_dev.add_adjust(nd,host.port)
             
             
         # translate link to edge in map
@@ -153,8 +198,11 @@ class ControllerApp(app_manager.RyuApp):
                     src = dev
                 if dev.has_port(link.dst):
                     dst = dev
-            src.add_adjust(dst)
-    
+            src.add_adjust(dst,link.src)
+
+        for switch in self.switch_dev:
+            switch.commit()
+            
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
         self.arp_table = {
@@ -220,21 +268,30 @@ class ControllerApp(app_manager.RyuApp):
             pkt = packet.Packet(data=msg.data)
             inPort = msg.in_port
             
-            if pkt.get_protocols(dhcp.dhcp):
+            if pkt.get_protocols(dhcp.dhcp): 
                 DHCPServer.handle_dhcp(datapath, inPort, pkt)  
+                self.print_debug_message()
                 
             elif pkt.get_protocols(arp.arp):
-                # self.print_debug_message()
                 arp_pkt = pkt.get_protocol(arp.arp)
-                print(f'arp request from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
+                
                 if (arp_pkt.src_ip == arp_pkt.dst_ip): # arping, update arp table
                     self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
                 else:
+                    print(f'arp from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
+                
                     self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
             else:
-                print("unsupported packet protocols. (ignored)")
+                if pkt.get_protocols(ethernet.ethernet):
+                    eth_pkt = pkt.get_protocol(ethernet.ethernet)
+                    print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
+                    if pkt.get_protocols(ipv4.ipv4):
+                        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+                        print(f"({ip_pkt.src}->{ip_pkt.dst})")
                 
         except Exception as e:
             self.logger.error(e)
     
+
+
