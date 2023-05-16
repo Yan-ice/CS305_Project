@@ -117,12 +117,11 @@ class SwitchDevice(NetDevice):
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
         
-        # boardcast setting
+        # boardcast setting: just send it to controller~
         if True:
             actions = [ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
-            for port in range(len(self.adjust)):
-                actions.append(ofp_parser.OFPActionOutput(port+1))
-            
+            # for port in range(len(self.adjust)):
+            #    actions.append(ofp_parser.OFPActionOutput(port+1))
 
             match = ofp_parser.OFPMatch(dl_dst = 'ff:ff:ff:ff:ff:ff')
             req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
@@ -146,7 +145,7 @@ class SwitchDevice(NetDevice):
                 req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
                                             priority=2333, flags=0, match=match, out_port = next_skip_port, actions=actions)
                 datapath.send_msg(req)
-                print(f"Flow commit for {form_id(self.id)}: {dst_addr}({form_id(dst.id)}) -> port{next_skip_port}({form_id(next_skip.id)})")
+                # print(f"Flow commit for {form_id(self.id)}: {dst_addr}({form_id(dst.id)}) -> port{next_skip_port}({form_id(next_skip.id)})")
         pass
     
 
