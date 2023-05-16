@@ -26,8 +26,16 @@ class NetDevice:
     
     def get_port(self,adj_device):
         for dev,port in self.adjust:
-            if adj_device == dev:
+            if adj_device is dev:
                 return port
+        
+        if adj_device is None:
+            print("WARN: adjust dev is None!")
+        else:
+            print(f"WARN: cannot find port of this adj_dev: {adj_device.id}!")
+            print(f"adj size: {len(self.adjust)}")
+            for adj in self.adjust:
+                print(f"[{form_id(self.id)}] -> {form_id(adj[0].id)} == 1")
             
     def destroy(self):
         self.adjust = None
@@ -35,6 +43,9 @@ class NetDevice:
         self.router_table = None
         
     def add_adjust(self, other_device, port):
+        if other_device is None:
+            print("WARN: add a NONE value as adjust device!")
+            return
         self.adjust.append((other_device,port))
         
     #update the table by giving an adjust device and the distance.
@@ -58,6 +69,23 @@ class SwitchDevice(NetDevice):
     
     def __init__(self, owner, id):
         super().__init__(owner, 100+id)
+    
+    def destroy(self):
+        datapath = self.owner.dp
+        ofp = datapath.ofproto
+        ofp_parser = datapath.ofproto_parser
+        for dst in self.router_table.keys():
+            if dst.is_host():
+
+                dst_addr = dst.MAC_addr # target host
+                match = ofp_parser.OFPMatch(dl_dst = dst_addr)
+                
+                req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_DELETE, buffer_id=0xffffffff,
+                                            out_port=ofp.OFPP_NONE, match=match)
+                datapath.send_msg(req)
+        pass
+        super().destroy();
+        
         
     def has_port(self, port):
         for sport in self.owner.ports:
@@ -78,7 +106,7 @@ class SwitchDevice(NetDevice):
         if True:
             actions = [ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
             for port in range(len(self.adjust)):
-                actions.append(ofp_parser.OFPActionOutput(port))
+                actions.append(ofp_parser.OFPActionOutput(port+1))
             
 
             match = ofp_parser.OFPMatch(dl_dst = 'ff:ff:ff:ff:ff:ff')
@@ -96,9 +124,9 @@ class SwitchDevice(NetDevice):
             if dst.is_host():
                 next_skip = self.router_table[dst][1]
                 next_skip_port = self.get_port(next_skip).port_no # port of next skip
-                dst_addr = dst.ip_addr # target host
+                dst_addr = dst.MAC_addr # target host
                 actions = [ofp_parser.OFPActionOutput(next_skip_port)]
-                match = ofp_parser.OFPMatch(nw_dst = dst_addr)
+                match = ofp_parser.OFPMatch(dl_dst = dst_addr)
                 
                 req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
                                             priority=2333, flags=0, match=match, out_port = next_skip_port, actions=actions)
@@ -129,7 +157,7 @@ class HostDevice(NetDevice):
     
     def __init__(self, owner, id):
         super().__init__(owner, 200+id)
-        self.ip_addr = f'10.0.0.{id}'
+        self.MAC_addr = f'00:00:00:00:00:0{id}'
         
     def is_host(self):
         return True
@@ -170,16 +198,18 @@ class ControllerApp(app_manager.RyuApp):
         for dev in self.switch_dev:
             dev.destroy()
         self.switch_dev.clear()
+        
         for dev in self.host_dev:
             dev.destroy()
         self.host_dev.clear()
         
+        print(f"updating topology. ({len(self.switch_dev)}) ({len(self.host_dev)})")
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
-            nd = SwitchDevice(switch,id)
+            nd = SwitchDevice(switch,id+1)
             self.switch_dev.append(nd)
         
-                # translate hosts to net point
+        # translate hosts to net point
         for id,host in enumerate(self.send_request(event.EventHostRequest(None)).hosts):
             nd = HostDevice(host,id+1)
             self.host_dev.append(nd)
@@ -202,6 +232,8 @@ class ControllerApp(app_manager.RyuApp):
 
         for switch in self.switch_dev:
             switch.commit()
+            
+        # self.print_debug_message()
             
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
