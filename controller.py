@@ -11,6 +11,7 @@ from ryu.lib.packet import ipv4
 from ryu.lib.packet import packet
 from ryu.lib.packet import udp
 from dhcp import DHCPServer
+import rest_firewall
 
 def form_id(id):
     if id >= 200:
@@ -105,7 +106,7 @@ class HostDevice(NetDevice):
             print(f"[{form_id(self.id)}] -> {form_id(adj.id)}")
  
 
-class ControllerApp(app_manager.RyuApp):
+class ControllerApp(rest_firewall.RestFirewallAPI):
     
     #totaly update when topology changes
     switch_dev = []
