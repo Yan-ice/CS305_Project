@@ -164,6 +164,7 @@ REST_DL_TYPE = 'dl_type'
 REST_DL_TYPE_ARP = 'ARP'
 REST_DL_TYPE_IPV4 = 'IPv4'
 REST_DL_TYPE_IPV6 = 'IPv6'
+REST_DL_TYPE_LLDP = 'LLDP'
 REST_DL_VLAN = 'dl_vlan'
 REST_SRC_IP = 'nw_src'
 REST_DST_IP = 'nw_dst'
@@ -778,15 +779,11 @@ class Firewall(object):
         if str(self.dp.id) in msgs:
             flow_stats = msgs[str(self.dp.id)]
             for flow_stat in flow_stats:
-                priority = flow_stat[REST_PRIORITY]
-                if (priority != STATUS_FLOW_PRIORITY
-                        and priority != ARP_FLOW_PRIORITY
-                        and priority != LOG_FLOW_PRIORITY):
-                    vid = flow_stat[REST_MATCH].get(REST_DL_VLAN, VLANID_NONE)
-                    if vlan_id == REST_ALL or vlan_id == vid:
-                        rule = self._to_rest_rule(flow_stat)
-                        rules.setdefault(vid, [])
-                        rules[vid].append(rule)
+                vid = flow_stat[REST_MATCH].get(REST_DL_VLAN, VLANID_NONE)
+                if vlan_id == REST_ALL or vlan_id == vid:
+                    rule = self._to_rest_rule(flow_stat)
+                    rules.setdefault(vid, [])
+                    rules[vid].append(rule)
 
         get_data = []
         for vid, rule in rules.items():
@@ -820,19 +817,15 @@ class Firewall(object):
                 priority = flow_stat[REST_PRIORITY]
                 dl_vlan = flow_stat[REST_MATCH].get(REST_DL_VLAN, VLANID_NONE)
 
-                if (priority != STATUS_FLOW_PRIORITY
-                        and priority != ARP_FLOW_PRIORITY
-                        and priority != LOG_FLOW_PRIORITY):
-                    if ((rule_id == REST_ALL or rule_id == ruleid) and
-                            (vlan_id == dl_vlan or vlan_id == REST_ALL)):
-                        match = Match.to_mod_openflow(flow_stat[REST_MATCH])
-                        delete_list.append([cookie, priority, match])
-                    else:
-                        if dl_vlan not in vlan_list:
-                            vlan_list.append(dl_vlan)
+                if ((rule_id == REST_ALL or rule_id == ruleid) and
+                        (vlan_id == dl_vlan or vlan_id == REST_ALL)):
+                    match = Match.to_mod_openflow(flow_stat[REST_MATCH])
+                    delete_list.append([cookie, priority, match])
+                else:
+                    if dl_vlan not in vlan_list:
+                        vlan_list.append(dl_vlan)
 
         self._update_vlan_list(vlan_list)
-
         if len(delete_list) == 0:
             msg_details = 'Rule is not exist.'
             if rule_id != REST_ALL:
@@ -888,7 +881,8 @@ class Match(object):
     _CONVERT = {REST_DL_TYPE:
                 {REST_DL_TYPE_ARP: ether.ETH_TYPE_ARP,
                  REST_DL_TYPE_IPV4: ether.ETH_TYPE_IP,
-                 REST_DL_TYPE_IPV6: ether.ETH_TYPE_IPV6},
+                 REST_DL_TYPE_IPV6: ether.ETH_TYPE_IPV6,
+                 REST_DL_TYPE_LLDP: ether.ETH_TYPE_LLDP},
                 REST_NW_PROTO:
                 {REST_NW_PROTO_TCP: inet.IPPROTO_TCP,
                  REST_NW_PROTO_UDP: inet.IPPROTO_UDP,
@@ -1097,11 +1091,7 @@ class Action(object):
     @staticmethod
     def to_rest(openflow):
         if REST_ACTION in openflow:
-            action_allow = 'OUTPUT:NORMAL'
-            if openflow[REST_ACTION] == [action_allow]:
-                action = {REST_ACTION: REST_ACTION_ALLOW}
-            else:
-                action = {REST_ACTION: REST_ACTION_DENY}
+            action = {REST_ACTION: openflow[REST_ACTION]}
         else:
             action = {REST_ACTION: 'Unknown action type.'}
 
