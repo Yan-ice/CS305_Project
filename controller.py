@@ -41,7 +41,7 @@ class DNSServer():
 		for question in query.questions:
 			name = str(question.get_qname())
 			for RR in DNSServer.RRs:
-				if RR.type == type and RR.name == name:
+				if RR.rtype == type and RR.rname == name:
 					r.add_answer(RR)
      
 		return r
@@ -64,14 +64,14 @@ class DNSServer():
 			
 			response = packet.Packet()
 			response.add_protocol(ethernet.ethernet(dst=pkt_ethernet.src,src=pkt_ethernet.dst))
-			response.add_protocol(ipv4.ipv4(st=ip_dst,src=ip_src))
-			response.add_protocol(udp.udp(sport=sport,dport=dport))
+			response.add_protocol(ipv4.ipv4(dst=ip_dst,src=ip_src))
+			response.add_protocol(udp.udp(src_port=sport,dst_port=dport))
 			reply_payload = DNSServer.gen_reply(query).pack()
 			response.add_protocol(reply_payload)
 	
 			actions = [parser.OFPActionOutput(port=port)]
 			out = parser.OFPPacketOut(datapath=datapath,buffer_id=ofproto.OFP_NO_BUFFER,
-                             in_port=ofproto.OFPP_CONTROLLER,actions=actions,data=response.serialize().data)
+                             in_port=ofproto.OFPP_CONTROLLER,actions=actions,data=response.serialize())
 			datapath.send_msg(out)
 			print("Send DNS Response")
 
@@ -201,7 +201,7 @@ class SwitchDevice(NetDevice):
                 next_skip = self.router_table[dst][1]
                 next_skip_port = self.get_port(next_skip).port_no # port of next skip
                 dst_addr = dst.MAC_addr # target host
-                actions = [ofp_parser.OFPActionOutput(next_skip_port), ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
+                actions = [ofp_parser.OFPActionOutput(next_skip_port)]
                 match = ofp_parser.OFPMatch(dl_dst = dst_addr)
                 
                 req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
@@ -289,7 +289,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
         self.arp_table = {
-            # "10.0.0.1": "00:00:00:00:00:01",
+            "10.0.0.0": "00:00:00:00:00:00",
             # "10.0.0.2": "00:00:00:00:00:02",
             # "10.0.0.3": "00:00:00:00:00:03"
         }
@@ -367,8 +367,8 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
                     self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
             elif pkt.get_protocols(udp.udp):
-                print(f'udp handled:',pkt.get_protocols(udp.udp).dst_port)
-                if pkt.get_protocols(udp.udp).dst_port == 53:
+                print(f'udp handled:',pkt.get_protocol(udp.udp).dst_port)
+                if pkt.get_protocol(udp.udp).dst_port == 53:
                     print(f'dns handled.')
                     DNSServer.handle_dns(datapath, pkt, inPort)
             else:
