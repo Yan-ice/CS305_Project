@@ -10,8 +10,72 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import packet
 from ryu.lib.packet import udp
-from dhcp import DHCPServer
 
+from dhcp import DHCPServer
+# from dns import DNSServer
+
+from dnslib import DNSRecord, RR, QTYPE
+
+class DNSServer():
+	RRs = []
+
+	@classmethod
+	def init_db(cls):
+		DNSServer.append('example1.com','10.0.0.1',QTYPE.A)
+		DNSServer.append('example2.com','10.0.0.2',QTYPE.A)
+		print('DNS server init success.')
+
+	@classmethod
+	def append(cls, name,value,type):
+		DNSServer.RRs.append(RR(name,type,rdata=value))
+  
+	@classmethod
+	def gen_reply(cls, query):
+		r = query.reply()
+		if not query.questions:
+			print("ERROR: DNS request is not questioning")
+			return r
+			
+		for question in query.questions:
+			name = str(question.get_qname())
+			for RR in DNSServer.RRs:
+				if RR.type == type and RR.name == name:
+					r.add_answer(RR)
+     
+		return r
+
+	@classmethod
+	def handle_dns(cls, datapath, pkt, port):
+		pkt_ethernet = pkt.get_protocol(ethernet.ethernet)
+		pkt_ipv4 = pkt.get_protocol(ipv4.ipv4)
+		pkt_udp = pkt.get_protocol(udp.udp)
+
+		ofproto = datapath.ofproto
+		parser = datapath.ofproto_parser
+		
+		query = DNSRecord.parse(pkt.protocols[-1])
+		if query.questions:
+			ip_src = pkt_ipv4.dst
+			ip_dst = pkt_ipv4.src
+			sport = 53
+			dport = pkt_udp.src_port
+			
+			response = packet.Packet()
+			response.add_protocol(ethernet.ethernet(dst=pkt_ethernet.src,src=pkt_ethernet.dst))
+			response.add_protocol(ipv4.ipv4(st=ip_dst,src=ip_src))
+			response.add_protocol(udp.udp(sport=sport,dport=dport))
+
+			reply_payload = DNSServer.gen_reply(query).pack()
+			response.add_protocol(reply_payload)
+	
+			actions = [parser.OFPActionOutput(port=port)]
+			out = parser.OFPPacketOut(datapath=datapath,buffer_id=ofproto.OFP_NO_BUFFER,
+                             in_port=ofproto.OFPP_CONTROLLER,actions=actions,data=response.serialize().data)
+			datapath.send_msg(out)
+			print("Send DNS Response")
+
+   
+   
 def form_id(id):
     if id >= 200:
         return f"h{id-200}"
@@ -116,29 +180,27 @@ class SwitchDevice(NetDevice):
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
         
-        # boardcast setting: just send it to controller~
+        # boardcast(default) setting: just only send it to controller~
         if True:
             actions = [ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
-            # for port in range(len(self.adjust)):
-            #    actions.append(ofp_parser.OFPActionOutput(port+1))
-
-            match = ofp_parser.OFPMatch(dl_dst = 'ff:ff:ff:ff:ff:ff')
-            req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
-                                            priority=9999, flags=0, match=match, out_port = 0, actions=actions)
-            datapath.send_msg(req)
             
-            match = ofp_parser.OFPMatch(dl_dst = '00:00:00:00:00:00')
+            # match = ofp_parser.OFPMatch(dl_dst = 'ff:ff:ff:ff:ff:ff')
+            # req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
+            #                                 priority=9999, flags=0, match=match, out_port = 0, actions=actions)
+            # datapath.send_msg(req)
+            
+            match = ofp_parser.OFPMatch()
             req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
-                                            priority=9999, flags=0, match=match, out_port = 0, actions=actions)
+                                            priority=1000, flags=0, match=match, out_port = 0, actions=actions)
             datapath.send_msg(req)
         
-        # flow setting
+        # flow setting: send to next flow and controller~
         for dst in self.router_table.keys():
             if dst.is_host():
                 next_skip = self.router_table[dst][1]
                 next_skip_port = self.get_port(next_skip).port_no # port of next skip
                 dst_addr = dst.MAC_addr # target host
-                actions = [ofp_parser.OFPActionOutput(next_skip_port)]
+                actions = [ofp_parser.OFPActionOutput(next_skip_port), ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
                 match = ofp_parser.OFPMatch(dl_dst = dst_addr)
                 
                 req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
@@ -225,14 +287,12 @@ class ControllerApp(app_manager.RyuApp):
             
     def __init__(self, *args, **kwargs):
         super(ControllerApp, self).__init__(*args, **kwargs)
-        self.switch_dev = []
-        self.host_dev = []
-        
         self.arp_table = {
             # "10.0.0.1": "00:00:00:00:00:01",
             # "10.0.0.2": "00:00:00:00:00:02",
             # "10.0.0.3": "00:00:00:00:00:03"
         }
+        DNSServer.init_db()
 
     @set_ev_cls(event.EventSwitchEnter)
     def handle_switch_add(self, ev): 
@@ -294,7 +354,6 @@ class ControllerApp(app_manager.RyuApp):
             
             if pkt.get_protocols(dhcp.dhcp): 
                 DHCPServer.handle_dhcp(datapath, inPort, pkt)  
-                self.print_debug_message()
                 
             elif pkt.get_protocols(arp.arp):
                 arp_pkt = pkt.get_protocol(arp.arp)
@@ -306,10 +365,15 @@ class ControllerApp(app_manager.RyuApp):
                 
                     self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
+            elif pkt.get_protocols(udp.udp):
+                print(f'udp handled:',pkt.get_protocols(udp.udp).dst_port)
+                if pkt.get_protocols(udp.udp).dst_port == 53:
+                    print(f'dns handled.')
+                    DNSServer.handle_dns(datapath, pkt, inPort)
             else:
-                if pkt.get_protocols(ethernet.ethernet):
-                    eth_pkt = pkt.get_protocol(ethernet.ethernet)
-                    # print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
+                if pkt.get_protocols(ipv4.ipv4):
+                    eth_pkt = pkt.get_protocol(ipv4.ipv4)
+                    print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
                 
         except Exception as e:
             self.logger.error(e)
