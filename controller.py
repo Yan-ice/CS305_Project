@@ -11,6 +11,8 @@ from ryu.lib.packet import ipv4
 from ryu.lib.packet import packet
 from ryu.lib.packet import udp
 
+import rest_firewall
+
 from dhcp import DHCPServer
 # from dns import DNSServer
 
@@ -64,7 +66,6 @@ class DNSServer():
 			response.add_protocol(ethernet.ethernet(dst=pkt_ethernet.src,src=pkt_ethernet.dst))
 			response.add_protocol(ipv4.ipv4(st=ip_dst,src=ip_src))
 			response.add_protocol(udp.udp(sport=sport,dport=dport))
-
 			reply_payload = DNSServer.gen_reply(query).pack()
 			response.add_protocol(reply_payload)
 	
@@ -227,7 +228,7 @@ class HostDevice(NetDevice):
         return False
  
 
-class ControllerApp(app_manager.RyuApp):
+class ControllerApp(rest_firewall.RestFirewallAPI):
     
     #totaly update when topology changes
     switch_dev = []
