@@ -14,68 +14,7 @@ from ryu.lib.packet import udp
 import rest_firewall
 
 from dhcp import DHCPServer
-# from dns import DNSServer
-
-from dnslib import DNSRecord, RR, QTYPE
-
-class DNSServer():
-	RRs = []
-
-	@classmethod
-	def init_db(cls):
-		DNSServer.append('example1.com','10.0.0.1',QTYPE.A)
-		DNSServer.append('example2.com','10.0.0.2',QTYPE.A)
-		print('DNS server init success.')
-
-	@classmethod
-	def append(cls, name,value,type):
-		DNSServer.RRs.append(RR(name,type,rdata=value))
-  
-	@classmethod
-	def gen_reply(cls, query):
-		r = query.reply()
-		if not query.questions:
-			print("ERROR: DNS request is not questioning")
-			return r
-			
-		for question in query.questions:
-			name = str(question.get_qname())
-			for RR in DNSServer.RRs:
-				if RR.rtype == type and RR.rname == name:
-					r.add_answer(RR)
-     
-		return r
-
-	@classmethod
-	def handle_dns(cls, datapath, pkt, port):
-		pkt_ethernet = pkt.get_protocol(ethernet.ethernet)
-		pkt_ipv4 = pkt.get_protocol(ipv4.ipv4)
-		pkt_udp = pkt.get_protocol(udp.udp)
-
-		ofproto = datapath.ofproto
-		parser = datapath.ofproto_parser
-		
-		query = DNSRecord.parse(pkt.protocols[-1])
-		if query.questions:
-			ip_src = pkt_ipv4.dst
-			ip_dst = pkt_ipv4.src
-			sport = 53
-			dport = pkt_udp.src_port
-			
-			response = packet.Packet()
-			response.add_protocol(ethernet.ethernet(dst=pkt_ethernet.src,src=pkt_ethernet.dst))
-			response.add_protocol(ipv4.ipv4(dst=ip_dst,src=ip_src))
-			response.add_protocol(udp.udp(src_port=sport,dst_port=dport))
-			reply_payload = DNSServer.gen_reply(query).pack()
-			response.add_protocol(reply_payload)
-	
-			actions = [parser.OFPActionOutput(port=port)]
-			out = parser.OFPPacketOut(datapath=datapath,buffer_id=ofproto.OFP_NO_BUFFER,
-                             in_port=ofproto.OFPP_CONTROLLER,actions=actions,data=response.serialize())
-			datapath.send_msg(out)
-			print("Send DNS Response")
-
-   
+from mydns import MYDNSServer
    
 def form_id(id):
     if id >= 200:
@@ -293,7 +232,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             # "10.0.0.2": "00:00:00:00:00:02",
             # "10.0.0.3": "00:00:00:00:00:03"
         }
-        DNSServer.init_db()
+        MYDNSServer.init_db()
 
     @set_ev_cls(event.EventSwitchEnter)
     def handle_switch_add(self, ev): 
@@ -370,7 +309,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
                 print(f'udp handled:',pkt.get_protocol(udp.udp).dst_port)
                 if pkt.get_protocol(udp.udp).dst_port == 53:
                     print(f'dns handled.')
-                    DNSServer.handle_dns(datapath, pkt, inPort)
+                    MYDNSServer.handle_dns(datapath, pkt, inPort)
             else:
                 if pkt.get_protocols(ipv4.ipv4):
                     eth_pkt = pkt.get_protocol(ipv4.ipv4)

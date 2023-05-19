@@ -24,7 +24,6 @@ class Config():
 
 class DHCPServer():
 
-    
     hardware_addr = Config.controller_macAddr
     start_ip = Config.start_ip
     end_ip = Config.end_ip
