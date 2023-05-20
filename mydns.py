@@ -56,6 +56,7 @@ class MYDNSServer():
 			
 			pkt_ipv4_resp = pkt_ipv4
 			pkt_ipv4_resp.src, pkt_ipv4_resp.dst = pkt_ipv4_resp.dst, pkt_ipv4_resp.src
+			pkt_ipv4_resp.total_length = 0 #automatically-calculate
 
 			response = packet.Packet()
 			response.add_protocol(pkt_ethernet_resp)
