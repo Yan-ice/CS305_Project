@@ -13,6 +13,7 @@ import struct
 class Config():
     controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
     dns = '8.8.8.8' # don't modify, just for the dns entry
+    
     start_ip = '192.168.1.2' # can be modified
     end_ip = '192.168.1.10' # can be modified
     netmask = '255.255.255.0' # can be modified
@@ -23,7 +24,6 @@ class Config():
 
 class DHCPServer():
 
-    
     hardware_addr = Config.controller_macAddr
     start_ip = Config.start_ip
     end_ip = Config.end_ip
