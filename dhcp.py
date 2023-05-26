@@ -9,7 +9,82 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 import binascii
 import struct
+def dhcp_server_ip_cal(start_ip,end_ip,netmask):
+    
+    netmasks=netmask.split(".")
+    pre_length=0
+    for i in netmasks:
+        pre_length+=str(bin(int(i))).count("1")
+    # print(pre_length)
+    #start_ip to bin
+    start_ips=start_ip.split(".")
+    bin_start_ip=''
+    for i in start_ips:
+        # print(str(bin(int(i)))[2:].rjust(8,"0"))
+        bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
+    # print(bin_start_ip)
+    bin_dhcp_host=bin_start_ip[:pre_length]
+    # print(bin_dhcp_host)
+    hdcp_host_array=[]
+    st=0
+    count=0
+    while pre_length>=8:
+        hdcp_host_array.append(str(int(bin_start_ip[st:st+8],2)))
+        st+=8
+        pre_length-=8
+        count+=1
+    if pre_length>0:
+        tempt=bin_start_ip[st:st+pre_length]
+        tempt=tempt.ljust(8,"0")
+        hdcp_host_array.append(str(int(tempt,2)))
+        count+=1
+    while count<4:
+        hdcp_host_array.append(str(0))
+        count+=1
+    # print(hdcp_host_array)
+    hdcp_host_array[3]=str(int(hdcp_host_array[3])+1)
+    # print(hdcp_host_array)
+    dhcp_server_ip=''
+    for i in range(len(hdcp_host_array)-1):
+        dhcp_server_ip+=hdcp_host_array[i]+"."
+    dhcp_server_ip+=hdcp_host_array[3]
+    # print(dhcp_server_ip)
+    return dhcp_server_ip
 
+def bin2str(bin_ip):
+    str_ip=str(bin_ip)[2:]
+    result=''
+    st=0
+    for i in range(3):
+        result+=str(int(str_ip[st:st+8],2))+"."
+        st+=8
+    result+=str(int(str_ip[24:],2))
+    return result
+
+def cons_ip_mac_pool(start_ip,end_ip):
+    start_ips=start_ip.split(".")
+    bin_start_ip=''
+    for i in start_ips:
+        # print(str(bin(int(i)))[2:].rjust(8,"0"))
+        bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
+    # print(bin_start_ip)
+    end_ips=end_ip.split(".")
+    bin_end_ip=''
+    for i in end_ips:
+        # print(str(bin(int(i)))[2:].rjust(8,"0"))
+        bin_end_ip+=str(bin(int(i)))[2:].rjust(8,"0")
+    # print(bin_end_ip)
+    bin_start_ip=bin(int(bin_start_ip,2))
+    bin_end_ip=bin(int(bin_end_ip,2))
+    ip_mac_pool={}
+    bin_current_ip=bin_start_ip
+    while int(bin_current_ip,2)<=int(bin_end_ip,2):
+        str_current_ip=bin2str(bin_current_ip)
+        ip_mac_pool[str_current_ip]=''
+        bin_current_ip=bin(int(bin_current_ip,2)+1)
+        # print(bin_current_ip)
+    # print(ip_mac_pool)
+    return ip_mac_pool
 class Config():
     controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
     dns = '8.8.8.8' # don't modify, just for the dns entry
@@ -27,19 +102,16 @@ class DHCPServer():
     hardware_addr = Config.controller_macAddr
     start_ip = Config.start_ip
     end_ip = Config.end_ip
-
-    start_ip_num=int(start_ip[10:])
-    end_ip_num=int(end_ip[10:])
-    ip_start_prefix='192.168.1.'
-    ip_mac_pool={}
-    mac_ip_pool={}
-    for i in range(start_ip_num,end_ip_num+1):
-        ip_mac_pool[ip_start_prefix+str(i)]="null"
-
     netmask = Config.netmask
+    
+    ip_mac_pool=cons_ip_mac_pool(start_ip,end_ip)
+    mac_ip_pool={}
+    
+
+    
     dns = Config.dns
     bin_netmask = addrconv.ipv4.text_to_bin(netmask)
-    dhcp_server = '192.168.1.1'
+    dhcp_server = dhcp_server_ip_cal(start_ip,end_ip,netmask)
     bin_server = addrconv.ipv4.text_to_bin(dhcp_server)
     bin_dns = addrconv.ipv4.text_to_bin(dns)
     bin_hostname = bytes("mininet-vm", 'utf-8')
