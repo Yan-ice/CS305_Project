@@ -14,7 +14,7 @@ class Config():
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
     start_ip = '192.168.1.5' # can be modified
-    end_ip = '192.168.1.8' # can be modified
+    end_ip = '192.168.1.20' # can be modified
     netmask = '255.255.255.0' # can be modified
     
     # You may use above attributes to configure your DHCP server.
@@ -97,7 +97,16 @@ def cons_ip_mac_pool(start_ip,end_ip):
     # print(ip_mac_pool)
     return ip_mac_pool
 
-
+def akc_byte2str(byte_ip):
+    strip=str(byte_ip)
+    print(strip)
+    result=''
+    count=4
+    for i in range(3):
+        result+=str(int(strip[count:count+2],16))+'.'
+        count+=4
+    result+=str(int(strip[count:count+2],16))
+    return result
 
 class DHCPServer():
 
@@ -201,6 +210,15 @@ class DHCPServer():
             next(opt for opt in req.options.option_list if opt.tag == 55))
         req.options.option_list.remove(
             next(opt for opt in req.options.option_list if opt.tag == 12))
+        #choose ip
+        cur_ip=''
+        for opt in req.options.option_list:
+            if opt.tag == 50 :
+                print(opt)
+                print(opt.value)
+                cur_ip=akc_byte2str(opt.value)
+        print(cur_ip)
+        #
         req.options.option_list.remove(
             next(opt for opt in req.options.option_list if opt.tag == 50))
         req.options.option_list.insert(
@@ -221,24 +239,27 @@ class DHCPServer():
         ack_pkt.add_protocol(
             ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
         ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-
-        cur_ip=''
         
-        has=False
-        for key in DHCPServer.ip_mac_pool:
-            if DHCPServer.ip_mac_pool[key]==req_eth.src:
-                cur_ip=key
-                has=True
-                break
-        if not has:
-            for key in DHCPServer.ip_mac_pool:
-                if DHCPServer.ip_mac_pool[key]=='':
-                    cur_ip=key
-                    DHCPServer.ip_mac_pool[key]=req_eth.src
-                    DHCPServer.mac_ip_pool[req_eth.src]=key
-                    break
+        
+        
+        # print(req.options)
+        # has=False
+        # for key in DHCPServer.ip_mac_pool:
+        #     if DHCPServer.ip_mac_pool[key]==req_eth.src:
+        #         cur_ip=key
+        #         has=True
+        #         break
+        # if not has:
+        #     for key in DHCPServer.ip_mac_pool:
+        #         if DHCPServer.ip_mac_pool[key]=='':
+        #             cur_ip=key
+        #             DHCPServer.ip_mac_pool[key]=req_eth.src
+        #             DHCPServer.mac_ip_pool[req_eth.src]=key
+        #             break
 
-
+        # cur_ip=''
+        # if req_eth.src in DHCPServer.mac_ip_pool:
+        #     cur_ip=DHCPServer.mac_ip_pool[req_eth.src]
 
         ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
                                        siaddr=DHCPServer.dhcp_server,
