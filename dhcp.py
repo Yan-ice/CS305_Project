@@ -118,7 +118,7 @@ class DHCPServer():
     bin_hardware_addr=addrconv.mac.text_to_bin(hardware_addr)
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
     #时间太短会出问题50可以
-    release_time='00000050'
+    release_time='00001000'
     
     @classmethod
     def assemble_offer(cls, pkt, datapath):
@@ -162,7 +162,7 @@ class DHCPServer():
         cur_ip=''
         for key in DHCPServer.ip_mac_pool:
           
-            if DHCPServer.ip_mac_pool[key]=="null":
+            if DHCPServer.ip_mac_pool[key]=='':
                 cur_ip=key
                 DHCPServer.ip_mac_pool[key]=disc_eth.src
                 DHCPServer.mac_ip_pool[disc_eth.src]=key
@@ -226,7 +226,7 @@ class DHCPServer():
                 break
         if not has:
             for key in DHCPServer.ip_mac_pool:
-                if DHCPServer.ip_mac_pool[key]=="null":
+                if DHCPServer.ip_mac_pool[key]=='':
                     cur_ip=key
                     DHCPServer.ip_mac_pool[key]=req_eth.src
                     DHCPServer.mac_ip_pool[req_eth.src]=key
