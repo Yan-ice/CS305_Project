@@ -14,7 +14,7 @@ class Config():
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
     start_ip = '192.168.1.5' # can be modified
-    end_ip = '192.168.1.20' # can be modified
+    end_ip = '192.168.1.9' # can be modified
     netmask = '255.255.255.0' # can be modified
     
     # You may use above attributes to configure your DHCP server.
@@ -76,15 +76,11 @@ def cons_ip_mac_pool(start_ip,end_ip):
     start_ips=start_ip.split(".")
     bin_start_ip=''
     for i in start_ips:
-        # print(str(bin(int(i)))[2:].rjust(8,"0"))
         bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    # print(bin_start_ip)
     end_ips=end_ip.split(".")
     bin_end_ip=''
     for i in end_ips:
-        # print(str(bin(int(i)))[2:].rjust(8,"0"))
         bin_end_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    # print(bin_end_ip)
     bin_start_ip=bin(int(bin_start_ip,2))
     bin_end_ip=bin(int(bin_end_ip,2))
     ip_mac_pool={}
@@ -93,8 +89,6 @@ def cons_ip_mac_pool(start_ip,end_ip):
         str_current_ip=bin2str(bin_current_ip)
         ip_mac_pool[str_current_ip]=''
         bin_current_ip=bin(int(bin_current_ip,2)+1)
-        # print(bin_current_ip)
-    # print(ip_mac_pool)
     return ip_mac_pool
 
 def akc_byte2str(byte_ip):
@@ -108,18 +102,16 @@ def akc_byte2str(byte_ip):
     result+=str(int(strip[count:count+2],16))
     return result
 
-class DHCPServer():
+# def return_nak():
+#     continue
 
+class DHCPServer():
     hardware_addr = Config.controller_macAddr
     start_ip = Config.start_ip
     end_ip = Config.end_ip
     netmask = Config.netmask
-    
     ip_mac_pool=cons_ip_mac_pool(start_ip,end_ip)
     mac_ip_pool={}
-    
-
-    
     dns = Config.dns
     bin_netmask = addrconv.ipv4.text_to_bin(netmask)
     dhcp_server = dhcp_server_ip_cal(start_ip,end_ip,netmask)
@@ -129,11 +121,10 @@ class DHCPServer():
     bin_hardware_addr=addrconv.mac.text_to_bin(hardware_addr)
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
     #时间太短会出问题50可以
-    release_time='00001000'
+    release_time='00000050'
     
     @classmethod
     def assemble_offer(cls, pkt, datapath):
-        
         disc_eth = pkt.get_protocol(ethernet.ethernet)
         disc_ipv4 = pkt.get_protocol(ipv4.ipv4)
         disc_udp = pkt.get_protocol(udp.udp)
@@ -144,14 +135,12 @@ class DHCPServer():
             next(opt for opt in disc.options.option_list if opt.tag == 53))
         disc.options.option_list.remove(
             next(opt for opt in disc.options.option_list if opt.tag == 12))
-        
         disc.options.option_list.insert(
             0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
         disc.options.option_list.insert(
             0, dhcp.option(tag=3, value=DHCPServer.bin_server))
         disc.options.option_list.insert(
             0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
-  
         disc.options.option_list.insert(
             0, dhcp.option(tag=53, value=binascii.a2b_hex('02')))
         disc.options.option_list.insert(
@@ -162,7 +151,6 @@ class DHCPServer():
             0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
         disc.options.option_list.insert(
             0, dhcp.option(tag=51, value=binascii.a2b_hex(DHCPServer.release_time)))
-
         offer_pkt = packet.Packet()
         offer_pkt.add_protocol(ethernet.ethernet(
             ethertype=disc_eth.ethertype, dst=disc_eth.src, src=DHCPServer.hardware_addr))
@@ -172,7 +160,6 @@ class DHCPServer():
 
         cur_ip=''
         for key in DHCPServer.ip_mac_pool:
-          
             if DHCPServer.ip_mac_pool[key]=='':
                 cur_ip=key
                 DHCPServer.ip_mac_pool[key]=disc_eth.src
@@ -198,8 +185,6 @@ class DHCPServer():
 
     @classmethod
     def assemble_ack(cls, pkt, datapath):
-        
-
         req_eth = pkt.get_protocol(ethernet.ethernet)
         req_ipv4 = pkt.get_protocol(ipv4.ipv4)
         req_udp = pkt.get_protocol(udp.udp)
@@ -241,25 +226,6 @@ class DHCPServer():
         ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
         
         
-        
-        # print(req.options)
-        # has=False
-        # for key in DHCPServer.ip_mac_pool:
-        #     if DHCPServer.ip_mac_pool[key]==req_eth.src:
-        #         cur_ip=key
-        #         has=True
-        #         break
-        # if not has:
-        #     for key in DHCPServer.ip_mac_pool:
-        #         if DHCPServer.ip_mac_pool[key]=='':
-        #             cur_ip=key
-        #             DHCPServer.ip_mac_pool[key]=req_eth.src
-        #             DHCPServer.mac_ip_pool[req_eth.src]=key
-        #             break
-
-        # cur_ip=''
-        # if req_eth.src in DHCPServer.mac_ip_pool:
-        #     cur_ip=DHCPServer.mac_ip_pool[req_eth.src]
 
         ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
                                        siaddr=DHCPServer.dhcp_server,
@@ -373,7 +339,6 @@ class DHCPServer():
        
         print(f'new dhcp {dhcp_state} packet recieved \n content is: {pkt_dhcp}')
         if dhcp_state=='DHCPDISCOVER':
-            # print("in DHCPDISCOVER")
             offer_pkt=DHCPServer.assemble_offer(pkt,datapath)
             if not offer_pkt=='null':
                 print(f'offer send')
@@ -382,13 +347,11 @@ class DHCPServer():
                 print(f'null offer send')
                 return
         elif dhcp_state=='DHCPREQUEST' and has_50:
-            # print("in DHCPREQUEST")
-            # pkt=DHCPServer.assemble_ack(pkt,datapath)
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_ack(pkt,datapath))
-            # print("-----------------DHCPREQUEST send")
+            print("ack send")
         elif dhcp_state=='DHCPREQUEST' and not has_50:
-            print("hhhhhhhhhhhhhhh")
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_ack2(pkt,datapath))
+            print("about lease time ack send")
         else:
             return
     
