@@ -9,6 +9,17 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 import binascii
 import struct
+class Config():
+    controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
+    dns = '8.8.8.8' # don't modify, just for the dns entry
+    
+    start_ip = '192.168.1.5' # can be modified
+    end_ip = '192.168.1.8' # can be modified
+    netmask = '255.255.255.0' # can be modified
+    
+    # You may use above attributes to configure your DHCP server.
+    # You can also add more attributes like "lease_time" to support bouns function.
+
 def dhcp_server_ip_cal(start_ip,end_ip,netmask):
     
     netmasks=netmask.split(".")
@@ -85,16 +96,7 @@ def cons_ip_mac_pool(start_ip,end_ip):
         # print(bin_current_ip)
     # print(ip_mac_pool)
     return ip_mac_pool
-class Config():
-    controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
-    dns = '8.8.8.8' # don't modify, just for the dns entry
-    
-    start_ip = '192.168.1.2' # can be modified
-    end_ip = '192.168.1.10' # can be modified
-    netmask = '255.255.255.0' # can be modified
-    
-    # You may use above attributes to configure your DHCP server.
-    # You can also add more attributes like "lease_time" to support bouns function.
+
 
 
 class DHCPServer():
@@ -168,19 +170,22 @@ class DHCPServer():
                 DHCPServer.mac_ip_pool[disc_eth.src]=key
                 break
  
+        if cur_ip=='':
+            print(f'null offer')
+            return 'null'
+        else:
+            offer_pkt.add_protocol(dhcp.dhcp(op=2, 
+                                            chaddr=disc_eth.src,
+                                            boot_file=disc.boot_file,
+                                            yiaddr=cur_ip,
+                                            xid=disc.xid,
+                                            options =disc.options,
+                                            flags=disc.flags
+            ))
 
-        offer_pkt.add_protocol(dhcp.dhcp(op=2, 
-                                         chaddr=disc_eth.src,
-                                         boot_file=disc.boot_file,
-                                         yiaddr=cur_ip,
-                                         xid=disc.xid,
-                                         options =disc.options,
-                                         flags=disc.flags
-        ))
-
-
-        print(f'assemble offer send \n content is {offer_pkt}')
-        return offer_pkt
+            
+            print(f'assemble offer send \n content is {offer_pkt}')
+            return offer_pkt
 
     @classmethod
     def assemble_ack(cls, pkt, datapath):
@@ -218,6 +223,7 @@ class DHCPServer():
         ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
 
         cur_ip=''
+        
         has=False
         for key in DHCPServer.ip_mac_pool:
             if DHCPServer.ip_mac_pool[key]==req_eth.src:
@@ -347,7 +353,13 @@ class DHCPServer():
         print(f'new dhcp {dhcp_state} packet recieved \n content is: {pkt_dhcp}')
         if dhcp_state=='DHCPDISCOVER':
             # print("in DHCPDISCOVER")
-            DHCPServer._send_packet(datapath,port,DHCPServer.assemble_offer(pkt,datapath))
+            offer_pkt=DHCPServer.assemble_offer(pkt,datapath)
+            if not offer_pkt=='null':
+                print(f'offer send')
+                DHCPServer._send_packet(datapath,port,offer_pkt)
+            else:
+                print(f'null offer send')
+                return
         elif dhcp_state=='DHCPREQUEST' and has_50:
             # print("in DHCPREQUEST")
             # pkt=DHCPServer.assemble_ack(pkt,datapath)
