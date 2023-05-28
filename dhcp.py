@@ -4,6 +4,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import udp
 from ryu.lib.packet import dhcp
+from ryu.lib.packet import icmp
 from ryu.controller.handler import set_ev_cls
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -26,16 +27,12 @@ def dhcp_server_ip_cal(start_ip,end_ip,netmask):
     pre_length=0
     for i in netmasks:
         pre_length+=str(bin(int(i))).count("1")
-    # print(pre_length)
     #start_ip to bin
     start_ips=start_ip.split(".")
     bin_start_ip=''
     for i in start_ips:
-        # print(str(bin(int(i)))[2:].rjust(8,"0"))
         bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    # print(bin_start_ip)
     bin_dhcp_host=bin_start_ip[:pre_length]
-    # print(bin_dhcp_host)
     hdcp_host_array=[]
     st=0
     count=0
@@ -52,14 +49,11 @@ def dhcp_server_ip_cal(start_ip,end_ip,netmask):
     while count<4:
         hdcp_host_array.append(str(0))
         count+=1
-    # print(hdcp_host_array)
     hdcp_host_array[3]=str(int(hdcp_host_array[3])+1)
-    # print(hdcp_host_array)
     dhcp_server_ip=''
     for i in range(len(hdcp_host_array)-1):
         dhcp_server_ip+=hdcp_host_array[i]+"."
     dhcp_server_ip+=hdcp_host_array[3]
-    # print(dhcp_server_ip)
     return dhcp_server_ip
 
 def bin2str(bin_ip):
@@ -93,7 +87,7 @@ def cons_ip_mac_pool(start_ip,end_ip):
 
 def akc_byte2str(byte_ip):
     strip=str(byte_ip)
-    print(strip)
+    # print(strip)
     result=''
     count=4
     for i in range(3):
@@ -133,9 +127,6 @@ def return_nak(pkt):
     nak_pkt.add_protocol(
         ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
     nak_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-    
-    
-
     nak_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
                                     siaddr=DHCPServer.dhcp_server,
                                     boot_file=req.boot_file,
@@ -144,7 +135,7 @@ def return_nak(pkt):
                                     xid=req.xid,
                                     options=req.options,
                                     flags=req.flags))
-    print(f'return nak \n content is {nak_pkt}')
+    # print(f'return nak \n content is {nak_pkt}')
     return nak_pkt
 
 def return_ack(pkt,cur_ip):
@@ -178,9 +169,6 @@ def return_ack(pkt,cur_ip):
     ack_pkt.add_protocol(
         ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
     ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-    
-    
-
     ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
                                     siaddr=DHCPServer.dhcp_server,
                                     boot_file=req.boot_file,
@@ -189,7 +177,7 @@ def return_ack(pkt,cur_ip):
                                     xid=req.xid,
                                     options=req.options,
                                     flags=req.flags))
-    print(f'return ack \n content is {ack_pkt}')
+    # print(f'return ack \n content is {ack_pkt}')
     return ack_pkt
 
 def return_leasetime_ack(pkt,cur_ip):
@@ -221,22 +209,6 @@ def return_leasetime_ack(pkt,cur_ip):
     ack_pkt.add_protocol(
         ipv4.ipv4(dst=req_ipv4.src, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
     ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-    # cur_ip=''
-    # has=False
-    # for key in DHCPServer.ip_mac_pool:
-    #     if DHCPServer.ip_mac_pool[key]==req_eth.src:
-    #         cur_ip=key
-    #         has=True
-    #         break
-    # if not has:
-    #     for key in DHCPServer.ip_mac_pool:
-    #         if DHCPServer.ip_mac_pool[key]=="null":
-    #             cur_ip=key
-    #             DHCPServer.ip_mac_pool[key]=req_eth.src
-    #             DHCPServer.mac_ip_pool[req_eth.src]=key
-    #             break
-
-
     ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
                                     siaddr=DHCPServer.dhcp_server,
                                     boot_file=req.boot_file,
@@ -245,8 +217,18 @@ def return_leasetime_ack(pkt,cur_ip):
                                     xid=req.xid,
                                     options=req.options,
                                     flags=req.flags))
-    print(f'return lease time ack \n content is {ack_pkt}')
+    # print(f'return lease time ack \n content is {ack_pkt}')
     return ack_pkt
+
+def return_icmp(src_ip,req_ip):
+    icmp_pkt = packet.Packet()
+    icmp_pkt.add_protocol(
+        ipv4.ipv4(dst=req_ip, src=src_ip))
+    icmp_pkt.add_protocol(icmp.icmp(type_=8, code=0, csum=0, data=b''))
+    # print(f"return icmp \n content is {icmp_pkt}")
+    return icmp_pkt
+
+
 
 class DHCPServer():
     hardware_addr = Config.controller_macAddr
@@ -267,7 +249,7 @@ class DHCPServer():
     release_time='00000050'
     
     @classmethod
-    def assemble_offer(cls, pkt, datapath):
+    def assemble_offer(cls,pkt, datapath,port):
         disc_eth = pkt.get_protocol(ethernet.ethernet)
         disc_ipv4 = pkt.get_protocol(ipv4.ipv4)
         disc_udp = pkt.get_protocol(udp.udp)
@@ -310,7 +292,7 @@ class DHCPServer():
                 break
  
         if cur_ip=='':
-            print(f'null offer')
+            # print(f'null offer')
             return 'null'
         else:
             offer_pkt.add_protocol(dhcp.dhcp(op=2, 
@@ -323,7 +305,7 @@ class DHCPServer():
             ))
 
             
-            print(f'assemble offer send \n content is {offer_pkt}')
+            # print(f'assemble offer send \n content is {offer_pkt}')
             return offer_pkt
 
     @classmethod
@@ -351,14 +333,6 @@ class DHCPServer():
             return return_leasetime_ack(pkt,cur_ip)
         else:
             return return_nak(pkt)
-        
-
-
-
-
-
-    
-
 
     @classmethod
     def get_state(cls,pkt_dhcp):
@@ -385,22 +359,27 @@ class DHCPServer():
             if opt.tag == 50:
                 has_50=True
        
-        print(f'new dhcp {dhcp_state} packet recieved \n content is: {pkt_dhcp}')
+        # print(f'new dhcp {dhcp_state} packet recieved \n content is: {pkt_dhcp}')
         if dhcp_state=='DHCPDISCOVER':
-            offer_pkt=DHCPServer.assemble_offer(pkt,datapath)
+            offer_pkt=DHCPServer.assemble_offer(pkt,datapath,port)
             if not offer_pkt=='null':
-                print(f'offer send')
+                # print(f'offer send')
                 DHCPServer._send_packet(datapath,port,offer_pkt)
             else:
-                print(f'null offer send')
+                # print(f'null offer send')
                 return
         elif dhcp_state=='DHCPREQUEST' and has_50:
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_ack(pkt,datapath))
-            print("ack send")
+            # print("ack send")
+            # print("------------------------")
+            # DHCPServer._send_packet(datapath,port,return_icmp('192.168.1.1','192.168.1.5'))
+            # print("icmp send")
+            # print("------------------------")
         elif dhcp_state=='DHCPREQUEST' and not has_50:
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_leasetime_ack(pkt,datapath))
-            print("lease time ack send")
+            # print("lease time ack send")
         else:
+            # print(f"receive other packet \n content is {pkt}")
             return
     
     @classmethod
