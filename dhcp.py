@@ -102,8 +102,104 @@ def akc_byte2str(byte_ip):
     result+=str(int(strip[count:count+2],16))
     return result
 
-# def return_nak():
-#     continue
+def return_nak(pkt):
+    req_eth = pkt.get_protocol(ethernet.ethernet)
+    req_ipv4 = pkt.get_protocol(ipv4.ipv4)
+    req_udp = pkt.get_protocol(udp.udp)
+    req = pkt.get_protocol(dhcp.dhcp)
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 53))
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 55))
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 12))
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 50))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=53, value=binascii.a2b_hex('06')))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=3, value=DHCPServer.bin_server))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=15, value=DHCPServer.bin_hostname))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=51, value=binascii.a2b_hex(DHCPServer.release_time)))
+    nak_pkt = packet.Packet()
+    nak_pkt.add_protocol(ethernet.ethernet(
+        ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
+    nak_pkt.add_protocol(
+        ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
+    nak_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
+    
+    
+
+    nak_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
+                                    siaddr=DHCPServer.dhcp_server,
+                                    boot_file=req.boot_file,
+                                    yiaddr='0',
+                                    ciaddr='0',
+                                    xid=req.xid,
+                                    options=req.options,
+                                    flags=req.flags))
+    print(f'return nak \n content is {nak_pkt}')
+    return nak_pkt
+
+def return_ack(pkt,cur_ip):
+    req_eth = pkt.get_protocol(ethernet.ethernet)
+    req_ipv4 = pkt.get_protocol(ipv4.ipv4)
+    req_udp = pkt.get_protocol(udp.udp)
+    req = pkt.get_protocol(dhcp.dhcp)
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 53))
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 55))
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 12))
+    #choose ip
+    # cur_ip=''
+    # for opt in req.options.option_list:
+    #     if opt.tag == 50 :
+    #         print(opt)
+    #         print(opt.value)
+    #         cur_ip=akc_byte2str(opt.value)
+    # print(cur_ip)
+    #
+    req.options.option_list.remove(
+        next(opt for opt in req.options.option_list if opt.tag == 50))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=53, value=binascii.a2b_hex('05')))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=3, value=DHCPServer.bin_server))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=15, value=DHCPServer.bin_hostname))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
+    req.options.option_list.insert(
+        0, dhcp.option(tag=51, value=binascii.a2b_hex(DHCPServer.release_time)))
+    ack_pkt = packet.Packet()
+    ack_pkt.add_protocol(ethernet.ethernet(
+        ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
+    ack_pkt.add_protocol(
+        ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
+    ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
+    
+    
+
+    ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
+                                    siaddr=DHCPServer.dhcp_server,
+                                    boot_file=req.boot_file,
+                                    yiaddr=cur_ip,
+                                    ciaddr=req.ciaddr,
+                                    xid=req.xid,
+                                    options=req.options,
+                                    flags=req.flags))
+    print(f'return ack \n content is {ack_pkt}')
+    return ack_pkt
 
 class DHCPServer():
     hardware_addr = Config.controller_macAddr
@@ -186,57 +282,19 @@ class DHCPServer():
     @classmethod
     def assemble_ack(cls, pkt, datapath):
         req_eth = pkt.get_protocol(ethernet.ethernet)
-        req_ipv4 = pkt.get_protocol(ipv4.ipv4)
-        req_udp = pkt.get_protocol(udp.udp)
         req = pkt.get_protocol(dhcp.dhcp)
-        req.options.option_list.remove(
-            next(opt for opt in req.options.option_list if opt.tag == 53))
-        req.options.option_list.remove(
-            next(opt for opt in req.options.option_list if opt.tag == 55))
-        req.options.option_list.remove(
-            next(opt for opt in req.options.option_list if opt.tag == 12))
-        #choose ip
         cur_ip=''
         for opt in req.options.option_list:
             if opt.tag == 50 :
                 print(opt)
                 print(opt.value)
                 cur_ip=akc_byte2str(opt.value)
-        print(cur_ip)
-        #
-        req.options.option_list.remove(
-            next(opt for opt in req.options.option_list if opt.tag == 50))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=53, value=binascii.a2b_hex('05')))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=1, value=DHCPServer.bin_netmask))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=3, value=DHCPServer.bin_server))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=15, value=DHCPServer.bin_hostname))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=6, value=DHCPServer.bin_dns))
-        req.options.option_list.insert(
-            0, dhcp.option(tag=51, value=binascii.a2b_hex(DHCPServer.release_time)))
-        ack_pkt = packet.Packet()
-        ack_pkt.add_protocol(ethernet.ethernet(
-            ethertype=req_eth.ethertype, dst=req_eth.src, src=DHCPServer.hardware_addr))
-        ack_pkt.add_protocol(
-            ipv4.ipv4(dst=req_ipv4.dst, src=DHCPServer.dhcp_server, proto=req_ipv4.proto))
-        ack_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
-        
-        
+        if DHCPServer.ip_mac_pool[cur_ip]==req_eth.src:
+            return return_ack(pkt,cur_ip)
+        else:
+            return return_nak(pkt)
+    
 
-        ack_pkt.add_protocol(dhcp.dhcp(op=2, chaddr=req_eth.src,
-                                       siaddr=DHCPServer.dhcp_server,
-                                       boot_file=req.boot_file,
-                                       yiaddr=cur_ip,
-                                       ciaddr=req.ciaddr,
-                                       xid=req.xid,
-                                       options=req.options,
-                                       flags=req.flags))
-        print(f'assemble ack send \n content is {ack_pkt}')
-        return ack_pkt
     @classmethod
     def assemble_ack2(cls, pkt, datapath):
         print("assemble_ack2")
