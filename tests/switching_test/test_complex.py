@@ -35,6 +35,7 @@ class OwnTopo(Topo):
         h4 = self.addHost('h4')
         h5 = self.addHost('h5')
         h6 = self.addHost('h6')
+        
         s1 = self.addSwitch('s1')
         s2 = self.addSwitch('s2')
         s3 = self.addSwitch('s3')

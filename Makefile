@@ -14,6 +14,7 @@ warn:
 
 clean: warn
 	sudo mn -c
+	sudo rm -f /var/lib/dhcp/dhclient.leases
 
 # Use 'make monitor to open monitor.
 monitor: clean
@@ -37,5 +38,23 @@ test2: warn
 	sudo $(PYTHON) tests/switching_test/test_complex.py
 
 # Use 'make test dhcp' to start switching test.
-test dhcp: warn
+test_dhcp: warn
 	sudo $(PYTHON) tests/dhcp_test/test_network.py
+
+
+test_ins1: warn
+	sudo $(PYTHON) tests/my_dhcp_test/test_ins1.py
+
+test_ins2: warn
+	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
+
+test_ins3: warn
+	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
+
+test_ins4: warn
+	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
+
+test_lease: warn
+	sudo $(PYTHON) tests/my_dhcp_test/test_lease_time.py
+
+

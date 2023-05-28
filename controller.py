@@ -48,6 +48,7 @@ class NetDevice:
             print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
         
     def trace(self,dst):
+        
         if dst is self:
             print(f"{form_id(self.id)} [success]")
         else:
@@ -326,12 +327,11 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             elif pkt.get_protocols(arp.arp):
                 arp_pkt = pkt.get_protocol(arp.arp)
                 
-                if (arp_pkt.src_ip == arp_pkt.dst_ip): # arping, update arp table
+                if (arp_pkt.src_ip != '0.0.0.0'): # arping, update arp table
                     self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
-                else:
                     print(f'arp from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
                 
-                    self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
+                self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
             elif pkt.get_protocols(udp.udp):
                 if pkt.get_protocol(udp.udp).dst_port == 53:
