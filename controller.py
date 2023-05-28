@@ -10,6 +10,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import packet
 from ryu.lib.packet import udp
+from ryu.lib.packet import icmp
 
 import rest_firewall
 
@@ -46,7 +47,16 @@ class NetDevice:
         for route in self.router_table.keys():
             print(f"[{form_id(self.id)}] -> {form_id(route.id)} == {self.router_table[route][0]} (nxt skip: {form_id(self.router_table[route][1].id)})")
         
-        
+    def trace(self,dst):
+        if dst is self:
+            print(f"{form_id(self.id)} [success]")
+        else:
+            print(f"{form_id(self.id)} -> ",end = "")
+            if dst in self.router_table.keys():
+                self.router_table[dst][1].trace(dst)
+            else:
+                print(f"X [failed]")
+    
     def destroy(self):
         self.adjust = None
         self.owner = None
@@ -140,7 +150,7 @@ class SwitchDevice(NetDevice):
                 next_skip = self.router_table[dst][1]
                 next_skip_port = self.get_port(next_skip).port_no # port of next skip
                 dst_addr = dst.MAC_addr # target host
-                actions = [ofp_parser.OFPActionOutput(next_skip_port)]
+                actions = [ofp_parser.OFPActionOutput(next_skip_port), ofp_parser.OFPActionOutput(ofp.OFPP_CONTROLLER)]
                 match = ofp_parser.OFPMatch(dl_dst = dst_addr)
                 
                 req = ofp_parser.OFPFlowMod(datapath=datapath, command=ofp.OFPFC_ADD, buffer_id=0xffffffff,
@@ -180,7 +190,20 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             dev.print_info()
         for dev in self.host_dev:
             dev.print_info()
-            
+    
+    def traceroute(self,src_mac, dst_mac):
+        print(f"Tracing {src_mac} -> {dst_mac}:")
+        src, dst = None, None
+        for dv in self.host_dev:
+            if dv.MAC_addr == src_mac:
+                src = dv
+            if dv.MAC_addr == dst_mac:
+                dst = dv
+        if src == None or dst == None:
+            print("unknown source or destination.")
+            return
+        src.trace(dst)
+        
     def topology_update(self):
         
         # clean the old topology
@@ -192,7 +215,6 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             dev.destroy()
         self.host_dev.clear()
         
-        print(f"updating topology.")
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
             nd = SwitchDevice(switch,id+1)
@@ -212,7 +234,8 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
         # translate link to edge in map
         for link in self.send_request(event.EventLinkRequest(None)).links:
             # print(f"link info: {link.src.dpid},{link.src.port_no}({link.src.hw_addr}) <-> {link.dst.dpid},{link.dst.port_no}({link.dst.hw_addr})")
-            src,dst = None,None
+            src = None
+            dst = None
             for dev in self.switch_dev:
                 if dev.has_port(link.src):
                     src = dev
@@ -292,6 +315,11 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             pkt = packet.Packet(data=msg.data)
             inPort = msg.in_port
             
+            # ICMP(ping) is used to debug.
+            if pkt.get_protocols(icmp.icmp): 
+                eth_pkt = pkt.get_protocol(ethernet.ethernet)
+                self.traceroute(eth_pkt.src,eth_pkt.dst)
+                
             if pkt.get_protocols(dhcp.dhcp): 
                 DHCPServer.handle_dhcp(datapath, inPort, pkt)  
                 
@@ -306,15 +334,12 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
                     self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     
             elif pkt.get_protocols(udp.udp):
-                print(f'udp handled:',pkt.get_protocol(udp.udp).dst_port)
                 if pkt.get_protocol(udp.udp).dst_port == 53:
-                    print(f'dns handled.')
+                    print(f'dns request handled.')
                     MYDNSServer.handle_dns(datapath, pkt, inPort)
             else:
-                if pkt.get_protocols(ipv4.ipv4):
-                    eth_pkt = pkt.get_protocol(ipv4.ipv4)
-                    print(f"unsupported protocols. ({eth_pkt.src}->{eth_pkt.dst})")
-                
+                pass
+            
         except Exception as e:
             self.logger.error(e)
     

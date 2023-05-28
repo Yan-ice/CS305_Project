@@ -19,10 +19,23 @@ clean: warn
 monitor: clean
 	ryu-manager --observe-links controller.py 
 
-# Use 'make test_switching' to start switching test.
-test_switching: warn
-	sudo $(PYTHON) tests/switching_test/test_network.py
+# Use 'make test switching' to start switching test.
+test1: warn
+	sudo $(PYTHON) tests/switching_test/test_triangle.py
 
-# Use 'make test_dhcp' to start switching test.
-test_dhcp: warn
+test2: warn
+	@echo "========================"
+	@echo "                    "
+	@echo "          s2 \      "
+	@echo "  h1 \   /    s3 - h4  "
+	@echo "  h2 - s1      |      "
+	@echo "  h3 /   \    s4 - h5  "
+	@echo "          s5 /  \       "
+	@echo "                 s6 - h6"
+	@echo "                "
+	@echo "========================"
+	sudo $(PYTHON) tests/switching_test/test_complex.py
+
+# Use 'make test dhcp' to start switching test.
+test dhcp: warn
 	sudo $(PYTHON) tests/dhcp_test/test_network.py
