@@ -15,7 +15,7 @@ class Config():
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
     start_ip = '192.168.1.5' # can be modified
-    end_ip = '192.168.1.9' # can be modified
+    end_ip = '192.168.1.11' # can be modified
     netmask = '255.255.255.0' # can be modified
     
     # You may use above attributes to configure your DHCP server.
