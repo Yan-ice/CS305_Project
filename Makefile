@@ -71,4 +71,7 @@ test_ins234: warn
 test_lease: warn
 	sudo $(PYTHON) tests/my_dhcp_test/test_lease_time.py
 
+test_multi_switches:
+	sudo $(PYTHON) tests/my_dhcp_test/test_multi_switches.py
+
 
