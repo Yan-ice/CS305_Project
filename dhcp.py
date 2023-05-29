@@ -10,19 +10,26 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 import binascii
 import struct
+import ipaddress
 class Config():
     controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
-    start_ip = '192.168.1.5' # can be modified
-    end_ip = '192.168.1.11' # can be modified
-    netmask = '255.255.255.0' # can be modified
+    #test_ins124
+    start_ip = '192.168.1.5' 
+    end_ip = '192.168.1.11' 
+    netmask = '255.255.255.0'
+     
+    #test_ins3 modify them
+    # start_ip = '192.168.1.5' 
+    # end_ip = '192.168.1.11' 
+    # netmask = '255.255.255.0' 
+
     
     # You may use above attributes to configure your DHCP server.
     # You can also add more attributes like "lease_time" to support bouns function.
 
 def dhcp_server_ip_cal(start_ip,end_ip,netmask):
-    
     netmasks=netmask.split(".")
     pre_length=0
     for i in netmasks:
@@ -86,14 +93,7 @@ def cons_ip_mac_pool(start_ip,end_ip):
     return ip_mac_pool
 
 def akc_byte2str(byte_ip):
-    strip=str(byte_ip)
-    # print(strip)
-    result=''
-    count=4
-    for i in range(3):
-        result+=str(int(strip[count:count+2],16))+'.'
-        count+=4
-    result+=str(int(strip[count:count+2],16))
+    result=str(ipaddress.IPv4Address(byte_ip))
     return result
 
 def return_nak(pkt):
@@ -315,8 +315,8 @@ class DHCPServer():
         cur_ip=''
         for opt in req.options.option_list:
             if opt.tag == 50 :
-                print(opt)
-                print(opt.value)
+                # print(opt)
+                # print(opt.value)
                 cur_ip=akc_byte2str(opt.value)
         if DHCPServer.ip_mac_pool[cur_ip]==req_eth.src:
             return return_ack(pkt,cur_ip)
