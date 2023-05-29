@@ -58,7 +58,7 @@ test_dhcp: warn
 test_ins1: warn
 	sudo $(PYTHON) tests/my_dhcp_test/test_ins1.py
 
-test_ins2: warn
+test_ins234: warn
 	@echo "========================"
 	@echo "                    "
 	@echo "  h1 \   "
@@ -66,12 +66,6 @@ test_ins2: warn
 	@echo "  hN /  "
 	@echo "                "
 	@echo "========================"
-	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
-
-test_ins3: warn
-	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
-
-test_ins4: warn
 	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
 
 test_lease: warn
