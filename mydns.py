@@ -3,7 +3,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import udp
-from dnslib import DNSRecord, RR, QTYPE, A
+from dnslib import DNSRecord, RR, QTYPE, A, CNAME
 
 class MYDNSServer():
 	RRs = []
@@ -12,6 +12,7 @@ class MYDNSServer():
 	def init_db(cls):
 		MYDNSServer.append('example1.com',A('10.0.0.1'),QTYPE.A)
 		MYDNSServer.append('example2.com',A('10.0.0.2'),QTYPE.A)
+		MYDNSServer.append('example3.com',A('10.0.0.3'),QTYPE.A)
 		print('DNS server init success.')
 
 	@classmethod
@@ -33,7 +34,6 @@ class MYDNSServer():
 
 			for RR in MYDNSServer.RRs:
 				if RR.rtype == type and RR.rname == name:
-					print("add answer success.")
 					r.add_answer(RR)
 
 		return r
@@ -70,7 +70,6 @@ class MYDNSServer():
 			out = parser.OFPPacketOut(datapath=datapath,buffer_id=ofproto.OFP_NO_BUFFER,
 							in_port=ofproto.OFPP_CONTROLLER,actions=actions,data=response.data)
 			datapath.send_msg(out)
-			print("Send DNS Response")
 
 if __name__ == '__main__':
 	MYDNSServer.init_db()

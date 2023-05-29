@@ -11,6 +11,10 @@ warn:
 	@echo ""
 	@echo "##################################################"
 	@echo ""
+	@echo "HELP: switch sX stop/start"
+	@echo "HELP: link hX sX down/up"
+	@echo "HELP: sh ovs-ofctl mod-port sX 1 down"
+	@echo ""
 
 clean: warn
 	sudo mn -c
@@ -21,10 +25,19 @@ monitor: clean
 	ryu-manager --observe-links controller.py 
 
 # Use 'make test switching' to start switching test.
-test1: warn
+test_dns: warn
+	@echo "========================"
+	@echo "                    "
+	@echo "  h1 - s1 -- s2 - h2 "
+	@echo "         \  /   "
+	@echo "          s3 "
+	@echo "          |   "
+	@echo "          h3  "
+	@echo "            "
+	@echo "========================"
 	sudo $(PYTHON) tests/switching_test/test_triangle.py
 
-test2: warn
+test_switching: warn
 	@echo "========================"
 	@echo "                    "
 	@echo "          s2 \      "
@@ -46,6 +59,13 @@ test_ins1: warn
 	sudo $(PYTHON) tests/my_dhcp_test/test_ins1.py
 
 test_ins2: warn
+	@echo "========================"
+	@echo "                    "
+	@echo "  h1 \   "
+	@echo "  .. - s1   "
+	@echo "  hN /  "
+	@echo "                "
+	@echo "========================"
 	sudo $(PYTHON) tests/my_dhcp_test/test_ins2_3_4.py
 
 test_ins3: warn

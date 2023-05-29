@@ -96,8 +96,8 @@ class NetDevice:
 # router_entry: destination: (distance, next_skip)
 class SwitchDevice(NetDevice):
     
-    def __init__(self, owner, id):
-        super().__init__(owner, 100+id)
+    def __init__(self, owner):
+        super().__init__(owner, 100+owner.ports[0].dpid)
     
     def destroy(self):
         datapath = self.owner.dp
@@ -218,7 +218,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
         
         # translate switches to net point
         for id,switch in enumerate(self.send_request(event.EventSwitchRequest(None)).switches):
-            nd = SwitchDevice(switch,id+1)
+            nd = SwitchDevice(switch)
             self.switch_dev.append(nd)
         
         # translate hosts to net point
