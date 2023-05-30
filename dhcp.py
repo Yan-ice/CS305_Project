@@ -11,86 +11,40 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 import binascii
 import struct
 import ipaddress
+from ipaddress import ip_address
 class Config():
     controller_macAddr = '7e:49:b3:f0:f9:99' # don't modify, a dummy mac address for fill the mac enrty
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
     #test_ins124
-    start_ip = '192.168.1.5' 
-    end_ip = '192.168.1.11' 
-    netmask = '255.255.255.0'
-     
-    #test_ins3 modify them
     # start_ip = '192.168.1.5' 
     # end_ip = '192.168.1.11' 
-    # netmask = '255.255.255.0' 
+    # netmask = '255.255.255.0'
+     
+    #test_ins3 modify them
+    start_ip = '10.26.133.163' 
+    end_ip = '10.26.144.4' 
+    netmask = '255.252.0.0' 
 
+    release_time='00000030'
     
     # You may use above attributes to configure your DHCP server.
     # You can also add more attributes like "lease_time" to support bouns function.
 
 def dhcp_server_ip_cal(start_ip,end_ip,netmask):
-    netmasks=netmask.split(".")
-    pre_length=0
-    for i in netmasks:
-        pre_length+=str(bin(int(i))).count("1")
-    #start_ip to bin
-    start_ips=start_ip.split(".")
-    bin_start_ip=''
-    for i in start_ips:
-        bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    bin_dhcp_host=bin_start_ip[:pre_length]
-    hdcp_host_array=[]
-    st=0
-    count=0
-    while pre_length>=8:
-        hdcp_host_array.append(str(int(bin_start_ip[st:st+8],2)))
-        st+=8
-        pre_length-=8
-        count+=1
-    if pre_length>0:
-        tempt=bin_start_ip[st:st+pre_length]
-        tempt=tempt.ljust(8,"0")
-        hdcp_host_array.append(str(int(tempt,2)))
-        count+=1
-    while count<4:
-        hdcp_host_array.append(str(0))
-        count+=1
-    hdcp_host_array[3]=str(int(hdcp_host_array[3])+1)
-    dhcp_server_ip=''
-    for i in range(len(hdcp_host_array)-1):
-        dhcp_server_ip+=hdcp_host_array[i]+"."
-    dhcp_server_ip+=hdcp_host_array[3]
-    return dhcp_server_ip
+    pre_length=sum([bin(int(i)).count('1') for i in netmask.split('.')])
+    ip_net = start_ip+"/"+str(pre_length)
+    net = ipaddress.ip_network(ip_net, strict=False)
+    return str([x for x in net.hosts()][0])
 
-def bin2str(bin_ip):
-    str_ip=str(bin_ip)[2:]
-    result=''
-    st=0
-    for i in range(3):
-        result+=str(int(str_ip[st:st+8],2))+"."
-        st+=8
-    result+=str(int(str_ip[24:],2))
+def cons_ip_mac_pool(start, end):
+    start = ip_address(start)
+    end = ip_address(end)
+    result = {}
+    while start <= end:
+        result[str(start)]=''
+        start += 1
     return result
-
-def cons_ip_mac_pool(start_ip,end_ip):
-    start_ips=start_ip.split(".")
-    bin_start_ip=''
-    for i in start_ips:
-        bin_start_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    end_ips=end_ip.split(".")
-    bin_end_ip=''
-    for i in end_ips:
-        bin_end_ip+=str(bin(int(i)))[2:].rjust(8,"0")
-    bin_start_ip=bin(int(bin_start_ip,2))
-    bin_end_ip=bin(int(bin_end_ip,2))
-    ip_mac_pool={}
-    bin_current_ip=bin_start_ip
-    while int(bin_current_ip,2)<=int(bin_end_ip,2):
-        str_current_ip=bin2str(bin_current_ip)
-        ip_mac_pool[str_current_ip]=''
-        bin_current_ip=bin(int(bin_current_ip,2)+1)
-    return ip_mac_pool
 
 def akc_byte2str(byte_ip):
     result=str(ipaddress.IPv4Address(byte_ip))
@@ -245,8 +199,7 @@ class DHCPServer():
     bin_hostname = bytes("mininet-vm", 'utf-8')
     bin_hardware_addr=addrconv.mac.text_to_bin(hardware_addr)
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
-    #时间太短会出问题50可以
-    release_time='00000050'
+    release_time= Config.release_time
     
     @classmethod
     def assemble_offer(cls,pkt, datapath,port):
@@ -284,12 +237,15 @@ class DHCPServer():
         offer_pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
 
         cur_ip=''
-        for key in DHCPServer.ip_mac_pool:
-            if DHCPServer.ip_mac_pool[key]=='':
-                cur_ip=key
-                DHCPServer.ip_mac_pool[key]=disc_eth.src
-                DHCPServer.mac_ip_pool[disc_eth.src]=key
-                break
+        if disc_eth.src in DHCPServer.mac_ip_pool:
+            cur_ip=DHCPServer.mac_ip_pool[disc_eth.src]
+        else:
+            for key in DHCPServer.ip_mac_pool:
+                if DHCPServer.ip_mac_pool[key]=='':
+                    cur_ip=key
+                    DHCPServer.ip_mac_pool[key]=disc_eth.src
+                    DHCPServer.mac_ip_pool[disc_eth.src]=key
+                    break
  
         if cur_ip=='':
             # print(f'null offer')
@@ -328,10 +284,12 @@ class DHCPServer():
     def assemble_leasetime_ack(cls, pkt, datapath):
         req_eth = pkt.get_protocol(ethernet.ethernet)
         cur_ip=''
-        cur_ip=DHCPServer.mac_ip_pool[req_eth.src]
-        if not cur_ip=='':
+        if req_eth.src in DHCPServer.mac_ip_pool:
+            cur_ip=DHCPServer.mac_ip_pool[req_eth.src]
+            print("lease time ack")
             return return_leasetime_ack(pkt,cur_ip)
         else:
+            print("lease time nak")
             return return_nak(pkt)
 
     @classmethod
@@ -366,18 +324,13 @@ class DHCPServer():
                 # print(f'offer send')
                 DHCPServer._send_packet(datapath,port,offer_pkt)
             else:
-                # print(f'null offer send')
+                print(f'null offer send')
                 return
         elif dhcp_state=='DHCPREQUEST' and has_50:
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_ack(pkt,datapath))
-            # print("ack send")
-            # print("------------------------")
-            # DHCPServer._send_packet(datapath,port,return_icmp('192.168.1.1','192.168.1.5'))
-            # print("icmp send")
-            # print("------------------------")
         elif dhcp_state=='DHCPREQUEST' and not has_50:
             DHCPServer._send_packet(datapath,port,DHCPServer.assemble_leasetime_ack(pkt,datapath))
-            # print("lease time ack send")
+            
         else:
             # print(f"receive other packet \n content is {pkt}")
             return
