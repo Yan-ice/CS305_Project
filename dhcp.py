@@ -19,7 +19,7 @@ class Config():
     
     #test_ins124
     start_ip = '192.168.1.2' 
-    end_ip = '192.168.1.5' 
+    end_ip = '192.168.1.10' 
     netmask = '255.255.255.0'
      
     #test_ins3 modify them
