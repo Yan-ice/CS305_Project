@@ -32,7 +32,7 @@ class TestTopo(Topo):
         Topo.__init__(self, **opts)
         num=1
         ip='no ip defined/8'
-        n=3
+        n=9
         hosts=[]
         for i in range(1,n+1):
             host = self.addHost('h'+str(num), ip=ip)

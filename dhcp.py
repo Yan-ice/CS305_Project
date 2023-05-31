@@ -18,7 +18,7 @@ class Config():
     dns = '8.8.8.8' # don't modify, just for the dns entry
     
     #test_ins124
-    start_ip = '192.168.1.2' 
+    start_ip = '192.168.1.5' 
     end_ip = '192.168.1.10' 
     netmask = '255.255.255.0'
      
@@ -220,17 +220,14 @@ def construct_leasetime_ack(pkt,cur_ip):
     return ack_pkt
 
 def send_icmp(pkt,src_ip,req_ip,datapath,port):
-    print("========================")
     req_ip='192.168.1.5' 
     disc_eth = pkt.get_protocol(ethernet.ethernet)
     disc_ipv4 = pkt.get_protocol(ipv4.ipv4)
-    print("========================")
     icmp_pkt = packet.Packet()
     icmp_pkt.add_protocol(ethernet.ethernet(
         ethertype=disc_eth.ethertype, dst='00:00:00:00:00:01',src=DHCPServer.hardware_addr))
-    print("========================")
     icmp_pkt.add_protocol(
-        ipv4.ipv4(dst=req_ip, src=src_ip, proto=disc_ipv4.proto))
+        ipv4.ipv4(dst=req_ip, src=src_ip, proto=1))
     icmp_pkt.add_protocol(icmp.icmp(type_=8, code=0, csum=0, data=b''))
     print("========================")
     DHCPServer._send_packet(datapath,port,icmp_pkt)
@@ -287,7 +284,7 @@ class DHCPServer():
         #ip allocation detection
         # cur_ip=find_valid_ip(pkt)
         # ip_detection()
-        send_icmp(pkt,DHCPServer.dhcp_server,'192.168.1.3',datapath,port)
+        # send_icmp(pkt,DHCPServer.dhcp_server,'192.168.1.3',datapath,port)
         # sleep(2)
         cur_ip=find_valid_ip(pkt)
         #
