@@ -30,13 +30,11 @@ def do_arp_all(net):
 class TestTopo(Topo):
     def __init__(self, **opts):
         Topo.__init__(self, **opts)
-        num=1
         ip='no ip defined/8'
-        n=2
+        n=3
         hosts=[]
         for i in range(1,n+1):
-            host = self.addHost('h'+str(num), ip=ip)
-            num+=1
+            host = self.addHost('h'+str(i), ip=ip)
             hosts.append(host)
             
         s1 = self.addSwitch('s1')
