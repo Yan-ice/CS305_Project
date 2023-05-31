@@ -320,7 +320,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
             if pkt.get_protocols(icmp.icmp): 
                 eth_pkt = pkt.get_protocol(ethernet.ethernet)
                 self.traceroute(eth_pkt.src,eth_pkt.dst)
-                
+                DHCPServer.update_ip_pool(pkt)
             if pkt.get_protocols(dhcp.dhcp): 
                 DHCPServer.handle_dhcp(datapath, inPort, pkt)  
                 
@@ -330,6 +330,7 @@ class ControllerApp(rest_firewall.RestFirewallAPI):
                 if (arp_pkt.src_ip != '0.0.0.0'): # arping, update arp table
                     self.arp_table[arp_pkt.src_ip] = arp_pkt.src_mac
                     print(f'arp from {arp_pkt.src_ip} to {arp_pkt.dst_ip} mac from {arp_pkt.src_mac} to {arp_pkt.dst_mac}')
+
                 
                 self.handle_arp(datapath, pkt.get_protocol(ethernet.ethernet), arp_pkt, inPort)              
                     

@@ -22,12 +22,12 @@ class Config():
     end_ip = '192.168.1.10' 
     netmask = '255.255.255.0'
      
-    #test_ins3 modify them
+    #modify them
     # start_ip = '10.26.133.163' 
     # end_ip = '10.26.144.4' 
     # netmask = '255.252.0.0' 
 
-    release_time='00000010'
+    release_time='00001000'
     
     # You may use above attributes to configure your DHCP server.
     # You can also add more attributes like "lease_time" to support bouns function.
@@ -219,23 +219,28 @@ def construct_leasetime_ack(pkt,cur_ip):
     # print(f'return lease time ack \n content is {ack_pkt}')
     return ack_pkt
 
-# def send_icmp(pkt,src_ip,req_ip,datapath,port):
-#     print("========================")
-#     req_ip='192.168.1.5' 
-#     disc_eth = pkt.get_protocol(ethernet.ethernet)
-#     disc_ipv4 = pkt.get_protocol(ipv4.ipv4)
-#     print("========================")
-#     icmp_pkt = packet.Packet()
-#     icmp_pkt.add_protocol(ethernet.ethernet(
-#         ethertype=disc_eth.ethertype, dst='00:00:00:00:00:01',src=DHCPServer.hardware_addr))
-#     print("========================")
-#     icmp_pkt.add_protocol(
-#         ipv4.ipv4(dst=req_ip, src=src_ip, proto=disc_ipv4.proto))
-#     icmp_pkt.add_protocol(icmp.icmp(type_=8, code=0, csum=0, data=b''))
-#     print("========================")
-#     DHCPServer._send_packet(datapath,port,icmp_pkt)
-#     print(f"send icmp \n content is {icmp_pkt}")
-#     return icmp_pkt
+def send_icmp(pkt,src_ip,req_ip,datapath,port):
+    print("========================")
+    req_ip='192.168.1.5' 
+    disc_eth = pkt.get_protocol(ethernet.ethernet)
+    disc_ipv4 = pkt.get_protocol(ipv4.ipv4)
+    print("========================")
+    icmp_pkt = packet.Packet()
+    icmp_pkt.add_protocol(ethernet.ethernet(
+        ethertype=disc_eth.ethertype, dst='00:00:00:00:00:01',src=DHCPServer.hardware_addr))
+    print("========================")
+    icmp_pkt.add_protocol(
+        ipv4.ipv4(dst=req_ip, src=src_ip, proto=disc_ipv4.proto))
+    icmp_pkt.add_protocol(icmp.icmp(type_=8, code=0, csum=0, data=b''))
+    print("========================")
+    DHCPServer._send_packet(datapath,port,icmp_pkt)
+    print(f"send icmp \n content is {icmp_pkt}")
+    return icmp_pkt
+
+
+def ip_detection():
+    print(DHCPServer.arp_table)
+
 
 def find_valid_ip(pkt):
     disc_eth = pkt.get_protocol(ethernet.ethernet)
@@ -267,6 +272,7 @@ class DHCPServer():
     bin_hardware_addr=addrconv.mac.text_to_bin(hardware_addr)
     bin_dhcp_server=addrconv.ipv4.text_to_bin(dhcp_server)
     release_time= Config.release_time
+    arp_table={}
     
     @classmethod
     def update_ip_pool(cls,pkt):
@@ -280,7 +286,8 @@ class DHCPServer():
     def assemble_offer(cls,pkt, datapath,port):
         #ip allocation detection
         # cur_ip=find_valid_ip(pkt)
-        # send_icmp(pkt,DHCPServer.dhcp_server,cur_ip,datapath,port)
+        # ip_detection()
+        send_icmp(pkt,DHCPServer.dhcp_server,'192.168.1.3',datapath,port)
         # sleep(2)
         cur_ip=find_valid_ip(pkt)
         #
